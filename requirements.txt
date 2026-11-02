@@ -1,0 +1,9 @@
+# Versions figées = déploiement reproductible (testées en local, Python 3.12).
+streamlit==1.66.1
+pandas==3.1.0
+matplotlib==3.11.2
+openai==3.41.0
+python-dotenv==1.2.4
+scikit-learn==1.9.1
+fpdf2==2.9.0
+pytest==9.2.0

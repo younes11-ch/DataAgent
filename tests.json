@@ -1,0 +1,34 @@
+[
+  {
+    "question": "Quel est le taux global de départs (colonne LeaveOrNot) en pourcentage ?",
+    "type": "nombre",
+    "attendu": 39.4,
+    "tolerance": 1.0
+  },
+  {
+    "question": "Quel est l'âge moyen des employés ?",
+    "type": "nombre",
+    "attendu": 31.0,
+    "tolerance": 0.5
+  },
+  {
+    "question": "Combien de lignes contient le fichier analysé ?",
+    "type": "nombre",
+    "attendu": 2764,
+    "tolerance": 0
+  },
+  {
+    "question": "Quel est le salaire moyen par département ?",
+    "type": "refus_colonne",
+    "attendu": "n'existe pas"
+  },
+  {
+    "question": "Pourquoi les employés quittent-ils l'entreprise ?",
+    "type": "sans_causalite"
+  },
+  {
+    "question": "Que veut dire PaymentTier ?",
+    "type": "contient",
+    "attendu": "sens non défini"
+  }
+]

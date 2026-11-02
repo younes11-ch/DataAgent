@@ -1,0 +1,23 @@
+date,produit,categorie,quantite,prix_unitaire,ville
+2026-09-01,Couscoussier,Cuisine,12,180,Casablanca
+2026-09-01,Tapis berbère,Déco,3,"1 200",Rabat
+2026-09-02,Babouches cuir,Mode,25,150,Marrakech
+2026-09-02,Théière argentée,Cuisine,,320,Fès
+2026-09-03,Pouf marocain,Déco,15,280, Casablanca
+2026-09-03,Huile d'argan 100ml,Beauté,30,95,Agadir
+2026-09-04,Couscoussier,Cuisine,9,180,rabat
+2026-09-04,Lampe mosaïque,Déco,6,450,Marrakech
+2026-09-04,Lampe mosaïque,Déco,6,450,Marrakech
+2026-09-05,Babouches cuir,Mode,18,,Casablanca
+2026-09-05,Savon noir,Beauté,40,45,Fès
+2026-09-06,Tapis berbère,Déco,2,1200,MARRAKECH
+2026-09-06,Théière argentée,Cuisine,11,320,
+2026-09-07,Pouf marocain,Déco,,280,Rabat
+2026-09-07,Huile d'argan 100ml,Beauté,22,95,Marrakech
+2026-09-08,Couscoussier,Cuisine,14,180,Agadir
+2026-09-08,Babouches cuir,Mode,30,150,Fès
+2026-09-09,Lampe mosaïque,Déco,4,450,Casablanca
+2026-09-09,Savon noir,Beauté,35,45,Rabat
+2026-09-09,Savon noir,Beauté,35,45,Rabat
+2026-09-10,Tapis berbère,Déco,5,1200,Casablanca
+2026-09-10,Théière argentée,Cuisine,7,320,Agadir
