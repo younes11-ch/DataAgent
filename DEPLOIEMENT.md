@@ -17,7 +17,7 @@ cd C:\Users\qsdfs\Desktop\hackathon\META
 git init
 git add .
 git commit -m "DataAgent : analyse CSV multi-agents (hackathon Meta)"
-git remote add origin https://github.com/TON_PSEUDO/dataagent.git
+git remote add origin https://github.com/younes11-ch/dataagent.git
 git branch -M main
 git push -u origin main
 ```

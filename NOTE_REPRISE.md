@@ -1,6 +1,12 @@
 # Note de reprise — DataAgent (hackathon Meta)
 
-## Où on en est (1er nov, session déploiement — PC allumé, user absent)
+## Où on en est (2 nov, 1h45 — DÉPLOYÉ ✅)
+- ✅ Repo public : https://github.com/younes11-ch/dataagent (main, .env absent vérifié)
+- ✅ Site en ligne : https://dataagent-kgek78zhmuddpdrthh7vdh.streamlit.app/ (HTTP 200 vérifié, Python 3.12, secrets OK)
+- ✅ URL consignée dans README (commit 1eaf69e). Git 2.56 + gh 2.103 installés, auth younes11-ch.
+- ⏰ Reste : vidéo de démo. Soumission avant le 4 nov, 21h ET.
+
+## Où on en était (1er nov, session déploiement — PC allumé, user absent)
 - ✅ Mode démo sans clé : `cle_api_disponible()` + `reponse_hors_ligne()` dans
   data_agent.py (total/moyenne/répartition calculés en local, zéro inventé),
   bandeau explicatif dans l'app. Les questions générales marchaient déjà sans clé.
