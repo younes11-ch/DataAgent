@@ -736,15 +736,31 @@ def reponse_hors_ligne(df, profil, question):
             "figures": [], "agents": trace}
 
 
+BUDGET_QUESTION = 120  # secondes max par question avant repli local
+
+
 def analyser_question(df, profil, question, historique, etape=None,
-                      detail="normale", graphique="auto"):
+                      detail="normale", graphique="auto", budget_s=BUDGET_QUESTION):
     """Les agents répondent à une question (auto-correction + vérification R2)."""
+    import time
+
     def _etape(message):
         if etape:
             etape(message)
 
+    def _repli_delai():
+        _etape("Délai dépassé : je rends la réponse locale…")
+        rep = reponse_hors_ligne(df, profil, question)
+        rep["reponse"] = ("L'IA met trop de temps à répondre "
+                          f"(>{budget_s} s). Voici le calcul local :\n"
+                          + rep["reponse"])
+        return rep
+
+    debut = time.monotonic()
     trace = {"tentatives": 0, "plan": "", "code": "", "log": "", "verdict": ""}
     ambigues = profil.get("ambigues", [])
+    if time.monotonic() - debut > budget_s:
+        return _repli_delai()
 
     _etape("Planificateur : je prépare le plan…")
     direct = _reponse_sens_colonne(question, ambigues)
@@ -763,8 +779,12 @@ def analyser_question(df, profil, question, historique, etape=None,
         _etape("Mode démo : réponse calculée localement, sans IA…")
         return reponse_hors_ligne(df, profil, question)
     trace["plan"] = planifier(question, profil)
+    if time.monotonic() - debut > budget_s:
+        return _repli_delai()
     erreur = None
     for tentative in range(2):
+        if time.monotonic() - debut > budget_s:
+            return _repli_delai()
         trace["tentatives"] = tentative + 1
         _etape(f"Codeur : j'écris le code d'analyse (tentative {tentative + 1})…")
         reponse_codeur = coder(question, trace["plan"], profil, historique, erreur,
@@ -783,6 +803,8 @@ def analyser_question(df, profil, question, historique, etape=None,
             texte_ref, _ = _formater_resultat(run["result"], lignes=100)
             brut = (run["log"].strip() + "\n" + texte_res).strip()
             if brut or run["figures"]:
+                if time.monotonic() - debut > budget_s:
+                    return _repli_delai()
                 _etape("Rédacteur : je rédige la réponse…")
                 nombres_calcules = extraire_nombres(run["log"] + "\n" + texte_ref)
                 brouillon = rediger_reponse(

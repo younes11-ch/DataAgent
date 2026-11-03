@@ -375,6 +375,34 @@ def afficher_lecture(reponse, cle):
             st.caption("Lecture vocale indisponible ici.")
 
 
+def afficher_echange(echange, idx):
+    """Un échange user/assistant rejouable avec ou sans fichier chargé."""
+    st.chat_message("user").write(echange["question"])
+    with st.chat_message("assistant"):
+        st.write(echange["reponse"] or "Analyse terminée.")
+        if echange.get("tableau") is not None:
+            st.dataframe(echange["tableau"])
+        if st.session_state.get("voir_graph", True):
+            for fig in echange.get("figures") or []:
+                st.image(fig, width=520)
+        afficher_audit(echange)
+        afficher_sources(echange.get("sources") or [])
+        boutons_charger(echange.get("sources") or [], f"hist-{idx}")
+        afficher_lecture(echange.get("reponse"), f"hist-{idx}")
+        with st.expander("Voir le code",
+                         expanded=st.session_state.get("voir_code", False)):
+            ag = echange.get("agents") or {}
+            st.write("**Planificateur** : " + ag.get("plan", ""))
+            st.write("**Codeur** : " + ag.get("explication", ""))
+            st.code(ag.get("code", ""), language="python")
+            if echange.get("tableau") is not None:
+                st.write("**Tableau brut du résultat** :")
+                st.dataframe(echange["tableau"])
+            st.write("**Vérificateur** : " + ag.get("verdict", ""))
+            if ag.get("audit"):
+                st.write("**Audit** : " + ag.get("audit", ""))
+
+
 def traiter_recherche(question):
     """Recherche sans fichier : agents web + audit, sources affichées."""
     st.chat_message("user").write(question)
@@ -507,6 +535,12 @@ with st.container(border=True):
     if lancer_rech and (question_web or "").strip():
         traiter_recherche(question_web.strip())
         st.rerun()
+
+if st.session_state.df is None and st.session_state.historique:
+    st.subheader("Réponses de recherche")
+    for idx, echange in enumerate(st.session_state.historique):
+        afficher_echange(echange, f"web-{idx}")
+
 components.html(voix.html_micro(cle="global"), height=180)
 st.caption("Dictée en français : parle, la transcription s'affiche "
            "ci-dessus, copie-la dans la barre de recherche ou dans le chat. "
@@ -673,30 +707,7 @@ if st.session_state.df is not None:
     st.divider()
     st.subheader("5 · Pose tes questions")
     for idx, echange in enumerate(st.session_state.historique):
-        st.chat_message("user").write(echange["question"])
-        with st.chat_message("assistant"):
-            st.write(echange["reponse"] or "Analyse terminée.")
-            if echange.get("tableau") is not None:
-                st.dataframe(echange["tableau"])
-            if st.session_state.get("voir_graph", True):
-                for fig in echange.get("figures") or []:
-                    st.image(fig, width=520)
-            afficher_audit(echange)
-            afficher_sources(echange.get("sources") or [])
-            boutons_charger(echange.get("sources") or [], f"hist-{idx}")
-            afficher_lecture(echange.get("reponse"), f"hist-{idx}")
-            with st.expander("Voir le code",
-                             expanded=st.session_state.get("voir_code", False)):
-                ag = echange["agents"]
-                st.write("**Planificateur** : " + ag.get("plan", ""))
-                st.write("**Codeur** : " + ag.get("explication", ""))
-                st.code(ag.get("code", ""), language="python")
-                if echange.get("tableau") is not None:
-                    st.write("**Tableau brut du résultat** :")
-                    st.dataframe(echange["tableau"])
-                st.write("**Vérificateur** : " + ag.get("verdict", ""))
-                if ag.get("audit"):
-                    st.write("**Audit** : " + ag.get("audit", ""))
+        afficher_echange(echange, idx)
 
     components.html(voix.html_micro(cle="chat"), height=180)
     st.caption("Dictée vocale (français) : dicte, copie la transcription "

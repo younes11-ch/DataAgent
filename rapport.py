@@ -2,6 +2,7 @@
 # Contenu : résumé, nettoyage, 3 graphiques, anomalies, limites, pistes.
 
 import base64
+import html as _html
 import io
 
 import matplotlib
@@ -125,48 +126,83 @@ def generer_html(df, cible, scan_res, nettoyage, version_label, hypotheses,
         morceaux.append(("Qualité des données", _graphe_manquants(df)))
     morceaux = morceaux[:3]
 
+    esc = _html.escape
     if scan_res and scan_res["observations"]:
-        obs_html = "".join(f"<li>{o['phrase']}</li>"
+        obs_html = "".join(f"<li>{esc(o['phrase'])}</li>"
                            for o in scan_res["observations"][:8])
         pistes_html = "".join(
-            f"<li>Écart constaté : {o['phrase']} → piste à vérifier : comparer ce "
+            f"<li>Écart constaté : {esc(o['phrase'])} → piste à vérifier : comparer ce "
             f"segment aux autres sur des facteurs non mesurés ici "
             f"(ancienneté, équipe, contexte…). Rien ne prouve un lien de cause à effet.</li>"
             for o in scan_res["observations"][:3])
     else:
         obs_html = "<li>Aucune anomalie marquée détectée.</li>"
         pistes_html = "<li>Collecter plus de données avant de conclure.</li>"
-    hyp_html = "".join(f"<li>{h}</li>" for h in hypotheses) or "<li>Aucune.</li>"
+    hyp_html = "".join(f"<li>{esc(h)}</li>" for h in hypotheses) or "<li>Aucune.</li>"
     if resume_exec:
-        bloc_resume = ("<h2>Résumé exécutif</h2><ul>"
-                       + "".join(f"<li>{l}</li>" for l in resume_exec)
-                       + "</ul>")
+        bloc_resume = ("<section><h2>1 · Résumé exécutif</h2><ul class=\"resume\">"
+                       + "".join(f"<li>{esc(l)}</li>" for l in resume_exec)
+                       + "</ul></section>")
     else:
         bloc_resume = ""
-    net_html = "".join(f"<li>{l}</li>" for l in nettoyage.get("rapport", []))
+    net_html = "".join(f"<li>{esc(l)}</li>" for l in nettoyage.get("rapport", []))
     lignes_types = "".join(
-        f"<tr><td>{c}</td><td>{df[c].dtype}</td>"
+        f"<tr><td>{esc(str(c))}</td><td>{esc(str(df[c].dtype))}</td>"
         f"<td>{int(df[c].isna().sum())}</td></tr>" for c in df.columns)
+    nom_fichier = esc(str(nettoyage.get('fichier', 'données')))
+    sommaire = "".join(
+        f'<li><a href="#s{i}">{t}</a></li>' for i, t in
+        [(1, "Résumé exécutif"), (2, "Données et colonnes"),
+         (3, "Nettoyage effectué"), (4, "Graphiques clés"),
+         (5, "Anomalies détectées"), (6, "Hypothèses et limites"),
+         (7, "Pistes de recommandation")])
 
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
-<title>Rapport DataAgent — {nettoyage.get('fichier', 'données')}</title>
-<style>body{{font-family:Arial,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;color:#222}}
-h1{{font-size:1.6em}}h2{{font-size:1.2em;margin-top:2em;border-bottom:1px solid #ccc}}
-table{{border-collapse:collapse}}td,th{{border:1px solid #ccc;padding:4px 10px;font-size:.9em}}
-img{{max-width:100%}}li{{margin:.4em 0}}</style></head><body>
-<h1>Rapport DataAgent</h1>
-<p>Fichier : {nettoyage.get('fichier', 'données')} — {len(df)} lignes, {len(df.columns)} colonnes.
-Version analysée : {version_label}.</p>
-{bloc_resume}<h2>Colonnes</h2>
-<table><tr><th>Colonne</th><th>Type</th><th>Manquantes</th></tr>{lignes_types}</table>
-<h2>Nettoyage effectué</h2><ul>{net_html}</ul>
-<h2>Graphiques clés</h2>
-{''.join(f'<h3>{t}</h3><img src="data:image/png;base64,{img}">' for t, img in morceaux)}
-<h2>Anomalies détectées</h2><ul>{obs_html}</ul>
-<h2>Hypothèses et limites</h2><ul>{hyp_html}</ul>
-<h2>Pistes de recommandation (à vérifier, jamais des certitudes)</h2>
-<ul>{pistes_html}</ul>
-<p><em>Rapport généré par DataAgent (Meta Global AI Developer Hackathon). Tous les chiffres
-viennent de calculs sur le fichier ; les écarts sont des associations, pas des causes.</em></p>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapport DataAgent — {nom_fichier}</title>
+<style>
+:root{{color-scheme:light}}
+body{{font-family:"Segoe UI",Arial,sans-serif;max-width:960px;margin:0 auto;
+padding:0 1.2em 3em;color:#1f2937;line-height:1.55;background:#fff}}
+.bandeau{{background:#0f766e;color:#fff;border-radius:12px;padding:26px 30px;margin:1.5em 0}}
+.bandeau h1{{margin:0;font-size:1.8rem;letter-spacing:-.02em}}
+.bandeau p{{margin:.5em 0 0;color:#d7efea}}
+.sommaire{{background:#f0fdf9;border:1px solid #ccfbf1;border-radius:12px;
+padding:14px 22px;margin:0 0 1.5em}}
+.sommaire ol{{margin:.4em 0;padding-left:1.4em}}
+.sommaire a{{color:#0f766e}}
+section{{margin-bottom:2em}}
+h2{{font-size:1.25rem;color:#111827;border-bottom:2px solid #0f766e;
+padding-bottom:.3em}}
+table{{border-collapse:collapse;width:100%;margin-top:.6em}}
+th{{background:#0f766e;color:#fff;text-align:left}}
+td,th{{border:1px solid #ccfbf1;padding:6px 12px;font-size:.92em}}
+tr:nth-child(even) td{{background:#f0fdf9}}
+figure{{margin:1em 0;border:1px solid #e5e7eb;border-radius:12px;padding:14px}}
+figcaption{{font-weight:600;color:#0f766e;margin-bottom:.5em}}
+img{{max-width:100%;height:auto}}
+ul.resume li{{margin:.5em 0}}
+.pied{{border-top:1px solid #ccfbf1;margin-top:2em;padding-top:1em;
+color:#6b7280;font-size:.9em}}
+@media print{{.bandeau{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
+</style></head><body>
+<header class="bandeau"><h1>Rapport DataAgent</h1>
+<p>Fichier : {nom_fichier} — {len(df)} lignes, {len(df.columns)} colonnes.<br>
+Version analysée : {esc(str(version_label))}.</p></header>
+<nav class="sommaire"><strong>Sommaire</strong><ol>{sommaire}</ol></nav>
+{bloc_resume}
+<section id="s2"><h2>2 · Données et colonnes</h2>
+<table><tr><th>Colonne</th><th>Type</th><th>Manquantes</th></tr>{lignes_types}</table></section>
+<section id="s3"><h2>3 · Nettoyage effectué</h2><ul>{net_html}</ul></section>
+<section id="s4"><h2>4 · Graphiques clés</h2>
+{''.join(f'<figure id="g{i}"><figcaption>{esc(t)}</figcaption>'
+         f'<img src="data:image/png;base64,{img}" alt="{esc(t)}"></figure>'
+         for i, (t, img) in enumerate(morceaux, 1))}</section>
+<section id="s5"><h2>5 · Anomalies détectées</h2><ul>{obs_html}</ul></section>
+<section id="s6"><h2>6 · Hypothèses et limites</h2><ul>{hyp_html}</ul></section>
+<section id="s7"><h2>7 · Pistes de recommandation (à vérifier, jamais des certitudes)</h2>
+<ul>{pistes_html}</ul></section>
+<footer class="pied"><em>Rapport généré par DataAgent (Meta Global AI Developer Hackathon). Tous les chiffres
+viennent de calculs sur le fichier ; les écarts sont des associations, pas des causes.</em></footer>
 </body></html>"""

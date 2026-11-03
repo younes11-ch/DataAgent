@@ -1,8 +1,21 @@
 # Tests du mode démo hors-ligne (sans clé API, sans appel réseau).
 
+import time
+
 import pandas as pd
 
 import data_agent
+
+
+def test_budget_question_repli_local_rapide(monkeypatch):
+    monkeypatch.setenv("MODEL_API_KEY", "fausse-cle-test")
+    df = pd.DataFrame({"montant": [10, 20, 30]})
+    profil = data_agent.profile_data(df, "t.csv")
+    debut = time.monotonic()
+    res = data_agent.analyser_question(
+        df, profil, "Quel est le total de montant ?", [], budget_s=0)
+    assert time.monotonic() - debut < 20
+    assert "trop de temps" in res["reponse"]
 
 
 def test_pas_de_cle_sans_env(monkeypatch):
