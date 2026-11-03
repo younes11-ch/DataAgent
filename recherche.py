@@ -86,6 +86,25 @@ def _nettoyer_html(texte):
 
 
 LIMITE_REPONSE = 2_000_000  # on ne bufferise jamais plus de 2 Mo
+LIMITE_FICHIER = 20_000_000  # jeu de données max chargeable (20 Mo)
+
+
+def telecharger_fichier(url, timeout=20, limite=LIMITE_FICHIER):
+    """Télécharge un fichier (http/https uniquement, taille plafonnée)."""
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        raise ValueError("URL de fichier invalide")
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as rep:
+        morceaux, total = [], 0
+        while True:
+            bloc = rep.read(65536)
+            if not bloc:
+                break
+            total += len(bloc)
+            if total > limite:
+                raise ValueError("fichier trop volumineux (max 20 Mo)")
+            morceaux.append(bloc)
+    return b"".join(morceaux)
 
 
 def _get_json(url, timeout=10):

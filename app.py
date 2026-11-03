@@ -316,6 +316,41 @@ def afficher_sources(sources):
                         f"[lien direct]({fichier})")
 
 
+def boutons_charger(sources, prefixe):
+    """Boutons 'charger dans l'app' pour chaque fichier trouvé (sans upload)."""
+    for idx, src in enumerate(sources or []):
+        fichier = _lien_sain((src or {}).get("fichier"))
+        if not fichier:
+            continue
+        nom = ((src or {}).get("nom", "fichier") or "fichier")[:50]
+        if st.button(f"Charger dans l'app : {nom}", key=f"{prefixe}-load-{idx}"):
+            charger_url_dans_app(fichier, nom)
+
+
+def charger_url_dans_app(url, nom):
+    """Télécharge un fichier trouvé par la recherche et l'analyse (comme un upload)."""
+    from recherche import telecharger_fichier
+    try:
+        with st.spinner("Téléchargement du fichier…"):
+            contenu = telecharger_fichier(url)
+        try:
+            tableau = lire_csv(contenu, nom)
+        except Exception:
+            st.error("Impossible de lire ce fichier (CSV attendu).")
+            return
+        if len(tableau) == 0 or len(tableau.columns) == 0:
+            st.error("Ce fichier est vide.")
+            return
+        st.session_state.brut = tableau
+        st.session_state.identifiant = (nom, len(contenu))
+        st.session_state.nom = nom
+        st.session_state.df = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Téléchargement impossible : {e}. "
+                 "Essaie le lien direct ci-dessus.")
+
+
 def afficher_audit(resultat):
     """Confiance, verdict et points non vérifiés d'une réponse auditée."""
     confiance = resultat.get("confiance")
@@ -360,6 +395,8 @@ def traiter_recherche(question):
         st.write(resultat["reponse"] or "Recherche terminée.")
         afficher_audit(resultat)
         afficher_sources(resultat.get("sources") or [])
+        boutons_charger(resultat.get("sources") or [],
+                        f"rech-{len(st.session_state.historique)}")
         afficher_lecture(resultat["reponse"], f"rech-{len(st.session_state.historique)}")
     st.session_state.historique.append(
         {"question": question, "reponse": resultat["reponse"],
@@ -646,6 +683,7 @@ if st.session_state.df is not None:
                     st.image(fig, width=520)
             afficher_audit(echange)
             afficher_sources(echange.get("sources") or [])
+            boutons_charger(echange.get("sources") or [], f"hist-{idx}")
             afficher_lecture(echange.get("reponse"), f"hist-{idx}")
             with st.expander("Voir le code",
                              expanded=st.session_state.get("voir_code", False)):

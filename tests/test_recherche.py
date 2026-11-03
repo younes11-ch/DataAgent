@@ -64,6 +64,43 @@ def test_rechercher_filtre_resultats_malformes():
     assert res["sources"][0]["nom"] == "ok"
 
 
+def test_telecharger_fichier_ok_et_limites(monkeypatch):
+    import urllib.request
+
+    class _FausseRep:
+        def __init__(self, data):
+            self._reste = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, n=-1):
+            if n is None or n < 0:
+                out, self._reste = self._reste, b""
+                return out
+            out, self._reste = self._reste[:n], self._reste[n:]
+            return out
+
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout=20: _FausseRep(b"a,b\n1,2\n"))
+    assert recherche.telecharger_fichier("https://x.example/f.csv") == b"a,b\n1,2\n"
+    try:
+        recherche.telecharger_fichier("ftp://x.example/f.csv")
+        assert False, "schéma non-http accepté"
+    except ValueError:
+        pass
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout=20: _FausseRep(b"x" * 100))
+    try:
+        recherche.telecharger_fichier("https://x.example/gros.csv", limite=10)
+        assert False, "limite ignorée"
+    except ValueError:
+        pass
+
+
 def test_sans_upload_refuse_si_desactive(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     res = data_agent.analyser_sans_upload("taux de chômage ?",
