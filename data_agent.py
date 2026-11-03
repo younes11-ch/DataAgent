@@ -5,6 +5,7 @@
 # Agent 3 (Vérificateur) : exécute en sous-processus, contrôle les chiffres (R1/R2).
 # Agent 4 (Rédacteur) : transforme les sorties brutes en réponse claire.
 
+import ast
 import io
 import json
 import math
@@ -48,8 +49,89 @@ def cle_api_disponible():
     return bool(_lire_cle())
 
 # Sécurité : le code généré par l'IA ne doit jamais contenir ces motifs.
+# Ancienne liste (compatibilité, vérification rapide par sous-chaîne).
 BLOQUES = ["import ", "open(", "os.", "sys.", "subprocess", "socket",
            "__", "eval(", "exec(", "compile("]
+
+# Blocage robuste par analyse syntaxique (ignore le contenu des chaînes,
+# donc les colonnes nommées "systeme" ou "evaluation" restent légitimes).
+NOMS_INTERDITS = {"os", "sys", "subprocess", "socket", "requests", "urllib",
+                  "shutil", "pathlib", "importlib", "pkgutil", "pty"}
+FONCTIONS_INTERDITES = {"open", "eval", "exec", "compile", "__import__",
+                        "getattr", "setattr", "delattr", "globals", "locals",
+                        "vars", "dir", "breakpoint", "input", "exit", "quit",
+                        "help", "memoryview"}
+ATTRS_INTERDITS = {
+    "environ", "getenv", "listdir", "getcwd", "chdir", "remove", "rmdir",
+    "mkdir", "makedirs", "system", "popen",
+    "read_csv", "read_table", "read_excel", "read_json", "read_sql",
+    "read_parquet", "read_pickle", "read_hdf", "read_feather", "read_orc",
+    "read_sas", "read_html",
+    "to_csv", "to_pickle", "to_excel", "to_json", "to_sql", "to_hdf",
+    "to_parquet", "to_feather", "to_html", "to_latex",
+    "savefig", "imsave", "imread", "load", "save", "savez",
+    "savez_compressed", "loadtxt", "savetxt", "genfromtxt", "fromfile",
+    "urlopen", "urlretrieve", "gethostname", "gethostbyname", "gethostbyaddr",
+    "run", "call", "check_output", "check_call", "Popen",
+    "import_module", "importlib",
+}
+
+MAX_LOG = 20000  # caractères max du journal capturé
+MAX_FIGURES = 6  # graphiques max renvoyés
+
+
+def _motif_interdit(code):
+    """Rend le motif interdit détecté dans le code, ou None si propre.
+
+    Analyse l'arbre syntaxique : les chaînes (noms de colonnes, textes)
+    sont ignorées, seuls la structure et les noms comptent.
+    """
+    try:
+        arbre = ast.parse(code or "")
+    except SyntaxError:
+        return None
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, (ast.Import, ast.ImportFrom)):
+            return "import"
+        if isinstance(noeud, ast.Name):
+            if noeud.id in NOMS_INTERDITS:
+                return noeud.id
+            if noeud.id in FONCTIONS_INTERDITES:
+                return noeud.id
+            if noeud.id.startswith("_"):
+                return noeud.id
+        if isinstance(noeud, ast.Attribute):
+            if noeud.attr in ATTRS_INTERDITS:
+                return noeud.attr
+            if noeud.attr.startswith("_"):
+                return noeud.attr
+    return None
+
+
+def env_minimal(tmp):
+    """Environnement épuré pour le sous-processus : sans secrets."""
+    env = dict(os.environ)
+    for cle in list(env):
+        if (cle in ("MODEL_API_KEY", "MUSE_CHAT_MODEL", "META_BASE_URL")
+                or "API_KEY" in cle or "SECRET" in cle or "TOKEN" in cle
+                or cle.startswith("MUSE_") or cle.startswith("META_")):
+            env.pop(cle, None)
+    env["HOME"] = tmp
+    env["TMPDIR"] = tmp
+    env["TEMP"] = tmp
+    env["TMP"] = tmp
+    return env
+
+
+def _nettoyer_erreur(texte):
+    """Masque chemins et secrets éventuels dans un message d'erreur."""
+    propre = str(texte or "")
+    propre = re.sub(r"[A-Za-z]:\\[^\s'\"`]*", "[chemin]", propre)
+    propre = re.sub(r"/(?:tmp|home|app|etc|var|Users)[^\s'\"`]*",
+                    "[chemin]", propre)
+    propre = re.sub(r"LLM_[A-Za-z0-9_]+", "[secret?]", propre)
+    propre = re.sub(r"\b[A-Za-z0-9_\-]{20,}\b", "[secret?]", propre)
+    return propre
 
 # Vocabulaire causal interdit (R4) : les données montrent des associations.
 MOTS_CAUSALS = ["parce que", "à cause de", "a cause de", "causé par",
@@ -308,6 +390,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+MAX_LOG = 20000
+MAX_FIGURES = 6
 entree, sortie = sys.argv[1], sys.argv[2]
 charge = pickle.load(open(entree, "rb"))
 espace = {"pd": pd, "plt": plt, "np": np, "df": charge["df"]}
@@ -316,15 +400,16 @@ try:
     with redirect_stdout(buf):
         exec(charge["code"], {"__builtins__": __builtins__}, espace)
     figures = []
-    for num in plt.get_fignums():
+    for num in plt.get_fignums()[:MAX_FIGURES]:
         b = io.BytesIO()
         plt.figure(num).savefig(b, format="png", bbox_inches="tight")
         figures.append(b.getvalue())
-    resultat = {"ok": True, "erreur": "", "log": buf.getvalue(),
+    resultat = {"ok": True, "erreur": "", "log": buf.getvalue()[:MAX_LOG],
                 "result": espace.get("result"), "figures": figures,
                 "df_clean": espace.get("df_clean"), "rapport": espace.get("rapport")}
 except Exception as e:
-    resultat = {"ok": False, "erreur": f"{type(e).__name__}: {e}", "log": buf.getvalue()}
+    resultat = {"ok": False, "erreur": f"{type(e).__name__}: {e}"[:500],
+                "log": buf.getvalue()[:MAX_LOG]}
 pickle.dump(resultat, open(sortie, "wb"))
 '''
 
@@ -334,9 +419,13 @@ def executer(df, code):
     echec = {"ok": False, "erreur": "", "log": "", "result": None,
              "figures": [], "df_clean": None, "rapport": None}
     for motif in BLOQUES:
-        if motif in code:
+        if motif in (code or ""):
             echec["erreur"] = f"motif interdit détecté : {motif}"
             return echec
+    motif = _motif_interdit(code)
+    if motif:
+        echec["erreur"] = f"motif interdit détecté : {motif}"
+        return echec
     with tempfile.TemporaryDirectory() as tmp:
         entree = os.path.join(tmp, "in.pkl")
         sortie = os.path.join(tmp, "out.pkl")
@@ -348,18 +437,26 @@ def executer(df, code):
         try:
             proc = subprocess.run(
                 [sys.executable, script, entree, sortie],
-                capture_output=True, text=True, timeout=TIMEOUT_CALCUL)
+                capture_output=True, text=True, timeout=TIMEOUT_CALCUL,
+                env=env_minimal(tmp))
         except subprocess.TimeoutExpired:
             echec["erreur"] = "TIMEOUT"
             return echec
         if proc.returncode != 0 or not os.path.exists(sortie):
             detail = (proc.stderr or "").strip().splitlines()
-            echec["erreur"] = detail[-1][:300] if detail else "échec du sous-processus"
+            brut = detail[-1][:300] if detail else "échec du sous-processus"
+            echec["erreur"] = _nettoyer_erreur(brut)
             return echec
         with open(sortie, "rb") as f:
             run = pickle.load(f)
     for cle in ("log", "result", "figures", "df_clean", "rapport"):
         run.setdefault(cle, None if cle in ("result", "df_clean", "rapport") else ([] if cle == "figures" else ""))
+    if isinstance(run.get("log"), str):
+        run["log"] = run["log"][:MAX_LOG]
+    if isinstance(run.get("figures"), list):
+        run["figures"] = run["figures"][:MAX_FIGURES]
+    if run.get("erreur"):
+        run["erreur"] = _nettoyer_erreur(run["erreur"])
     return run
 
 
@@ -367,7 +464,13 @@ def traduire_erreur(erreur, profil):
     """Traduit une erreur technique en français clair, sans trace brute (R8)."""
     m = re.search(r"KeyError: '([^']+)'", erreur or "")
     if m:
-        return (f"La colonne '{m.group(1)}' n'existe pas. "
+        nom = m.group(1)
+        # Ne jamais renvoyer un chemin ou un secret dans le message.
+        if (":" in nom or "/" in nom or "\\" in nom
+                or ".env" in nom or nom.startswith("LLM_")):
+            return ("La colonne demandée n'existe pas. "
+                    f"Colonnes disponibles : {', '.join(profil['colonnes'])}.")
+        return (f"La colonne '{nom}' n'existe pas. "
                 f"Colonnes disponibles : {', '.join(profil['colonnes'])}.")
     if erreur == "TIMEOUT":
         return ("Le calcul a dépassé 30 secondes et a été arrêté. "
@@ -702,14 +805,159 @@ def analyser_question(df, profil, question, historique, etape=None,
                     f" après correction (tentative {tentative + 1})"
                     if tentative > 0 else " du premier coup")
                     + (", réponse vérifiée" if ok else ", réponse partiellement vérifiée"))
+                audit_csv = _audit_chemin_csv(question, brouillon or brut,
+                                              nombres_calcules)
+                trace["audit"] = audit_csv["verdict"]
+                trace["confiance"] = audit_csv["confiance"]
+                if audit_csv["verdict"] == "REFUSE":
+                    return {"reponse": ("Je ne peux pas confirmer : "
+                                        "contenu bloqué par l'audit de "
+                                        "sécurité. Reformule ta question."),
+                            "tableau": None, "figures": [],
+                            "agents": trace, "sources": [],
+                            "confiance": "faible",
+                            "points_non_verifies": audit_csv["points_non_verifies"],
+                            "verdict": "REFUSE"}
                 return {"reponse": brouillon or brut, "tableau": tableau,
-                        "figures": run["figures"], "agents": trace}
+                        "figures": run["figures"], "agents": trace,
+                        "sources": [], "confiance": audit_csv["confiance"],
+                        "points_non_verifies": audit_csv["points_non_verifies"],
+                        "verdict": audit_csv["verdict"]}
             erreur = "le code a tourné mais n'a rien produit (ni print, ni result, ni graphique)"
         else:
             erreur = run["erreur"]
     trace["verdict"] = "Échec après 2 tentatives."
     return {"reponse": traduire_erreur(erreur or "", profil),
             "tableau": None, "figures": [], "agents": trace}
+
+
+def _audit_chemin_csv(question, brouillon, nombres_calcules):
+    """Audit d'une réponse calculée sur CSV (mode observation).
+
+    Les chiffres viennent du calcul local (source de vérité) : on ne
+    réécrit pas la réponse, on annote confiance + points non vérifiés.
+    Un REFUSE sécurité remplace la réponse (ne fuit jamais).
+    """
+    from audit import auditer_logique, auditer_securite, decider
+    rap_l = auditer_logique(brouillon, nombres_calcules, question)
+    rap_sec = auditer_securite(brouillon)
+    rap_s = {"ok": True, "problemes": [], "non_recoupes": []}
+    decision = decider(rap_s, rap_l, rap_sec, 0)
+    return decision
+
+
+def _brouillon_sans_upload_hors_ligne(question, sources):
+    """Brouillon local à partir des extraits (zéro inventé)."""
+    if not sources:
+        return ("Je ne peux pas confirmer : aucune source fiable trouvée "
+                "pour cette question. Reformule ou importe un fichier.")
+    lignes = []
+    for src in sources[:4]:
+        extrait = (src.get("extrait") or "").strip()[:300]
+        if extrait:
+            lignes.append(f"- {extrait} (source : {src.get('nom', '?')})")
+    if not lignes:
+        return ("Je ne peux pas confirmer : les sources trouvées ne "
+                "contiennent pas d'information exploitable.")
+    return ("D'après les sources consultées :\n" + "\n".join(lignes))
+
+
+def _brouillon_sans_upload_ia(question, sources, problemes=None):
+    """Agent principal (avec IA) : rédige depuis les extraits, sans inventer."""
+    bloc = "\n".join(
+        f"- [{s.get('nom', '?')}] {s.get('url', '')} : "
+        f"{(s.get('extrait') or '')[:600]}" for s in sources[:6])
+    reprise = (f"\nProblèmes signalés par les auditeurs : "
+               f"{'; '.join(problemes)}.\nCorrige-les." if problemes else "")
+    prompt = (
+        "Tu es un agent de recherche. Question : " + (question or "")
+        + "\nSources (seule vérité autorisée) :\n" + (bloc or "(aucune)")
+        + "\nRÈGLES : chaque chiffre DOIT venir d'un extrait ci-dessus. "
+          "N'invente JAMAIS. En cas de doute, écris « je ne peux pas "
+          "confirmer » et explique pourquoi. Si les sources se "
+          "contredisent, signale-le au lieu de choisir en silence. "
+          "Réponds en français, 3 à 8 lignes." + reprise
+        + '\nRéponds UNIQUEMENT avec un objet JSON : '
+          '{"brouillon": "le texte"}'
+    )
+    try:
+        return _extraire_json(_demander(prompt)).get("brouillon", "") or ""
+    except Exception:
+        return ""
+
+
+def analyser_sans_upload(question, historique=None, permettre_recherche=True,
+                         fonction_recherche=None, etape=None,
+                         max_boucles=3):
+    """Répond sans fichier : recherche autonome + audit obligatoire.
+
+    Rend {reponse, sources, confiance, points_non_verifies, verdict,
+    requetes, boucles, agents}. N'affiche jamais un brouillon REFUSÉ.
+    """
+    from audit import pipeline_audit
+    from recherche import rechercher
+
+    def _etape(msg):
+        if etape:
+            etape(msg)
+
+    trace = {"tentatives": 0, "plan": "", "verdict": ""}
+    if not (question or "").strip():
+        return {"reponse": "Pose ta question en toutes lettres.",
+                "sources": [], "confiance": "faible",
+                "points_non_verifies": ["question vide"], "verdict": "REFUSE",
+                "requetes": [], "boucles": 0, "agents": trace}
+    if not permettre_recherche:
+        trace["verdict"] = "REFUSE : recherche désactivée par l'utilisateur."
+        return {"reponse": ("Recherche désactivée : active « Autoriser la "
+                            "recherche » ou importe un fichier CSV."),
+                "sources": [], "confiance": "faible",
+                "points_non_verifies": ["recherche non autorisée"],
+                "verdict": "REFUSE", "requetes": [], "boucles": 0,
+                "agents": trace}
+    _etape("Recherche : je reformule et j'interroge plusieurs sources…")
+    via_api = cle_api_disponible()
+    trouve = rechercher(question, fonction_recherche=fonction_recherche)
+    sources = trouve["sources"]
+    extraits = [s.get("extrait", "") for s in sources if s.get("extrait")]
+
+    def _principal(problemes):
+        if via_api:
+            brouillon = _brouillon_sans_upload_ia(question, sources,
+                                                  problemes)
+            if brouillon:
+                return brouillon
+        return _brouillon_sans_upload_hors_ligne(question, sources)
+
+    _etape("Audit : sources, logique et sécurité vérifient le brouillon…")
+    calc = extraire_nombres("\n".join(extraits))
+    audit = pipeline_audit(question, _principal, sources,
+                           donnees_calculees=calc, extraits=extraits or None,
+                           max_boucles=max_boucles)
+    verdict = audit["verdict"]
+    points = audit["points_non_verifies"] or (
+        [] if sources else ["aucune source trouvée"])
+    audit["points_non_verifies"] = points
+    trace["tentatives"] = audit["boucles"]
+    trace["plan"] = ("Recherche autonome (%d requêtes, %d sources)"
+                     % (len(trouve["requetes"]), len(sources)))
+    trace["verdict"] = f"Audit : {verdict} (confiance {audit['confiance']})."
+    if verdict == "REFUSE":
+        reponse = ("Je ne peux pas confirmer : "
+                   + (" ; ".join(audit["problemes"][:3])
+                      or "contenu bloqué par l'audit de sécurité.")
+                   + " Reformule ta question.")
+    else:
+        reponse = audit["brouillon"]
+        if verdict == "A CORRIGER" and audit["points_non_verifies"]:
+            reponse += ("\n\n⚠ Points non vérifiés : "
+                        + "; ".join(audit["points_non_verifies"][:5])
+                        + ". Je ne peux pas confirmer ces points.")
+    return {"reponse": reponse, "sources": sources,
+            "confiance": audit["confiance"],
+            "points_non_verifies": audit["points_non_verifies"],
+            "verdict": verdict, "requetes": trouve["requetes"],
+            "boucles": audit["boucles"], "agents": trace}
 
 
 def expliquer_comparaison(comp):

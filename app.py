@@ -7,6 +7,7 @@ import os
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def _charger_secrets():
@@ -29,6 +30,7 @@ import points_aberrants
 import prediction
 import rapport
 import scan
+import voix
 from scan import pct
 
 st.set_page_config(page_title="DataAgent", page_icon="📊", layout="wide")
@@ -111,7 +113,8 @@ for cle, defaut in [("identifiant", None), ("nom", ""), ("brut", None),
                     ("base_nettoyee", None), ("journal", []), ("annule", False),
                     ("strategie_appliquee", None), ("det_aberrantes", None),
                     ("resume_exec", None), ("rapport_cache", None),
-                    ("csv_cache", None)]:
+                    ("csv_cache", None), ("autoriser_recherche", True),
+                    ("lecture_vocale", False)]:
     if cle not in st.session_state:
         st.session_state[cle] = defaut
 
@@ -126,6 +129,11 @@ with st.sidebar:
     st.slider("Questions suggérées", 2, 6, 4, key="nb_sug")
     st.toggle("Afficher les graphiques", value=True, key="voir_graph")
     st.toggle("Montrer le code par défaut", value=False, key="voir_code")
+    st.toggle("Autoriser la recherche", value=True,
+              key="autoriser_recherche",
+              help="L'agent peut chercher des données sur le web sans fichier.")
+    st.toggle("Lecture vocale", value=False, key="lecture_vocale",
+              help="Lit les réponses à voix haute (français).")
     if st.session_state.df is not None:
         st.header("Données")
         st.slider("Lignes de l'aperçu", 5, 20, 5, key="lignes_apercu")
@@ -264,6 +272,75 @@ def questions_secours(profil):
     return qs[:4]
 
 
+def afficher_sources(sources):
+    """Sources (nom + lien) sous chaque réponse web."""
+    if not sources:
+        return
+    st.caption("Sources :")
+    for src in sources:
+        nom = src.get("nom", "Source") or "Source"
+        url = src.get("url", "") or ""
+        if url:
+            st.markdown(f"- [{nom}]({url})")
+        else:
+            st.write(f"- {nom}")
+
+
+def afficher_audit(resultat):
+    """Confiance, verdict et points non vérifiés d'une réponse auditée."""
+    confiance = resultat.get("confiance")
+    verdict = resultat.get("verdict")
+    if confiance or verdict:
+        boucles = resultat.get("boucles", "?")
+        st.info(f"Confiance : {confiance or '?'} · "
+                f"Verdict audit : {verdict or '?'} · "
+                f"Boucles : {boucles}")
+    points = resultat.get("points_non_verifies") or []
+    if points:
+        st.warning("Points non vérifiés : " + "; ".join(points[:5]))
+
+
+def afficher_lecture(reponse, cle):
+    """Bouton haut-parleur sous une réponse (si lecture activée)."""
+    if st.session_state.get("lecture_vocale"):
+        try:
+            components.html(voix.html_lecture(reponse or "", cle=cle),
+                            height=70)
+        except Exception:
+            st.caption("Lecture vocale indisponible ici.")
+
+
+def traiter_recherche(question):
+    """Recherche sans fichier : agents web + audit, sources affichées."""
+    st.chat_message("user").write(question)
+    with st.chat_message("assistant"):
+        with st.status("Recherche en cours…", expanded=True) as statut:
+            try:
+                resultat = data_agent.analyser_sans_upload(
+                    question,
+                    permettre_recherche=st.session_state.get(
+                        "autoriser_recherche", True),
+                    etape=statut.write)
+                statut.update(label="Recherche terminée !", state="complete")
+            except Exception:
+                statut.update(label="Erreur pendant la recherche",
+                              state="error")
+                st.error("Oups, une erreur est arrivée. Essaie de reformuler ta question.")
+                return
+        st.write(resultat["reponse"] or "Recherche terminée.")
+        afficher_audit(resultat)
+        afficher_sources(resultat.get("sources") or [])
+        afficher_lecture(resultat["reponse"], f"rech-{len(st.session_state.historique)}")
+    st.session_state.historique.append(
+        {"question": question, "reponse": resultat["reponse"],
+         "tableau": None, "figures": [],
+         "agents": resultat.get("agents", {}),
+         "sources": resultat.get("sources") or [],
+         "confiance": resultat.get("confiance"),
+         "points_non_verifies": resultat.get("points_non_verifies") or [],
+         "verdict": resultat.get("verdict")})
+
+
 def traiter_question(question):
     """Fait travailler les agents avec suivi en direct, réponse vérifiée."""
     st.chat_message("user").write(question)
@@ -300,10 +377,20 @@ def traiter_question(question):
                 st.write("**Tableau brut du résultat** :")
                 st.dataframe(resultat["tableau"])
             st.write("**Vérificateur** : " + ag.get("verdict", ""))
+            if ag.get("audit"):
+                st.write("**Audit** : " + ag.get("audit", ""))
+        afficher_audit(resultat)
+        afficher_sources(resultat.get("sources") or [])
+        afficher_lecture(resultat["reponse"],
+                         f"csv-{len(st.session_state.historique)}")
     st.session_state.historique.append(
         {"question": question, "reponse": resultat["reponse"],
          "tableau": resultat["tableau"], "figures": resultat["figures"],
-         "agents": resultat["agents"]})
+         "agents": resultat["agents"],
+         "sources": resultat.get("sources") or [],
+         "confiance": resultat.get("confiance"),
+         "points_non_verifies": resultat.get("points_non_verifies") or [],
+         "verdict": resultat.get("verdict")})
 
 
 def verifier_test(test, reponse):
@@ -325,6 +412,25 @@ def verifier_test(test, reponse):
                        for m in [w.lower() for w in data_agent.MOTS_CAUSALS])
     return False
 
+
+st.subheader("0 · Recherche sans fichier")
+st.write("Pas de CSV ? L'agent cherche lui-même sur le web, puis chaque "
+         "réponse passe l'audit (sources, logique, sécurité).")
+col_rech, col_btn = st.columns([4, 1])
+with col_rech:
+    question_web = st.text_input("Barre de recherche",
+                                 placeholder="Ex : taux de chômage France 2024",
+                                 key="question_web",
+                                 label_visibility="collapsed")
+with col_btn:
+    lancer_rech = st.button("Rechercher")
+if lancer_rech and (question_web or "").strip():
+    traiter_recherche(question_web.strip())
+    st.rerun()
+components.html(voix.html_micro(cle="global"), height=180)
+st.caption("🎤 Dictée en français : parle, la transcription s'affiche "
+           "ci-dessus, copie-la dans la barre de recherche ou dans le chat. "
+           "Le voyant rouge indique l'écoute.")
 
 fichier = st.file_uploader("Envoie ton fichier de données (même sale)", type=["csv"])
 
@@ -486,26 +592,34 @@ if st.session_state.df is not None:
 
     st.divider()
     st.subheader("5 · Pose tes questions")
-    for echange in st.session_state.historique:
+    for idx, echange in enumerate(st.session_state.historique):
         st.chat_message("user").write(echange["question"])
         with st.chat_message("assistant"):
             st.write(echange["reponse"] or "Analyse terminée.")
-            if echange["tableau"] is not None:
+            if echange.get("tableau") is not None:
                 st.dataframe(echange["tableau"])
             if st.session_state.get("voir_graph", True):
-                for fig in echange["figures"]:
+                for fig in echange.get("figures") or []:
                     st.image(fig, width=520)
+            afficher_audit(echange)
+            afficher_sources(echange.get("sources") or [])
+            afficher_lecture(echange.get("reponse"), f"hist-{idx}")
             with st.expander("Voir le code",
                              expanded=st.session_state.get("voir_code", False)):
                 ag = echange["agents"]
                 st.write("**Planificateur** : " + ag.get("plan", ""))
                 st.write("**Codeur** : " + ag.get("explication", ""))
                 st.code(ag.get("code", ""), language="python")
-                if echange["tableau"] is not None:
+                if echange.get("tableau") is not None:
                     st.write("**Tableau brut du résultat** :")
                     st.dataframe(echange["tableau"])
                 st.write("**Vérificateur** : " + ag.get("verdict", ""))
+                if ag.get("audit"):
+                    st.write("**Audit** : " + ag.get("audit", ""))
 
+    components.html(voix.html_micro(cle="chat"), height=180)
+    st.caption("🎤 Dictée vocale (français) : dicte, copie la transcription "
+               "dans le chat. Le voyant rouge = écoute en cours.")
     question = st.chat_input("Ex : quel est le total par ville ?")
     if question:
         traiter_question(question)

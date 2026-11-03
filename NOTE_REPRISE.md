@@ -1,6 +1,21 @@
 # Note de reprise — DataAgent (hackathon Meta)
 
-## Où on en est (2 nov, 1h45 — DÉPLOYÉ ✅)
+## Où on en est (2 nov — DÉPUBLIÉ, pause déploiement, travail en local)
+- ⏸️ Repo GitHub supprimé à la demande (vérifié, 0 repo public). Tout est intact
+  sur le PC : code + historique git local (4 commits). Le remote `origin` pointe
+  vers un repo supprimé → à recréer au re-déploiement.
+- 🖥️ Le site tourne EN LOCAL : double-clic `DEMARRER_APP.bat` →
+  http://localhost:8501 (garder la fenêtre noire ouverte).
+- ⏸️ Audit sécurité livré (faille critique prouvée C1-C3) mais correctifs NON
+  appliqués. 3 fichiers tests sécurité écrits, non suivis, non lancés :
+  tests/test_securite_executeur.py, test_securite_erreurs.py,
+  test_securite_fichiers.py → à reprendre AVANT de re-déployer.
+- ⚠️ L'app Streamlit Cloud existe peut-être encore (à supprimer sur
+  share.streamlit.io si besoin — impossible sans navigateur).
+- ⏰ Reste : finitions du user, vidéo de démo, re-déploiement (repo + push +
+  Cloud), soumission avant le 4 nov, 21h ET.
+
+## Où on en était (2 nov, 1h45 — DÉPLOYÉ ✅)
 - ✅ Repo public : https://github.com/younes11-ch/dataagent (main, .env absent vérifié)
 - ✅ Site en ligne : https://dataagent-kgek78zhmuddpdrthh7vdh.streamlit.app/ (HTTP 200 vérifié, Python 3.12, secrets OK)
 - ✅ URL consignée dans README (commit 1eaf69e). Git 2.56 + gh 2.103 installés, auth younes11-ch.
