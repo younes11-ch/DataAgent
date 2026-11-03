@@ -72,7 +72,7 @@ def test_decideur_ok_corriger_refuse():
                           "non_recoupes": []},
                          {"ok": True, "problemes": []},
                          {"ok": True, "problemes": []}, 1)
-    assert corr["verdict"] == "A CORRIGER"
+    assert corr["verdict"] == "À CORRIGER"
     refus = audit.decider({"ok": True, "problemes": [], "non_recoupes": []},
                           {"ok": True, "problemes": []},
                           {"ok": False, "problemes": ["contient e-mail"]}, 2)
@@ -100,7 +100,7 @@ def test_pipeline_plafonne_les_boucles():
                                DEUX_SOURCES,
                                donnees_calculees=[("60", 60.0)],
                                extraits=["taux de 60 mesuré"], max_boucles=3)
-    assert res["verdict"] == "A CORRIGER" and res["boucles"] == 4
+    assert res["verdict"] == "À CORRIGER" and res["boucles"] == 4
     assert res["points_non_verifies"]
 
 

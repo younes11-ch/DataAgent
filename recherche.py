@@ -48,7 +48,8 @@ def est_important(url):
 
 def trier_sources(resultats):
     """Classe les portails importants en premier (tri stable)."""
-    return sorted(resultats or [],
+    propres = [r for r in (resultats or []) if isinstance(r, dict)]
+    return sorted(propres,
                   key=lambda r: 0 if est_important(r.get("url")) else 1)
 
 
@@ -83,10 +84,16 @@ def _nettoyer_html(texte):
     return html.unescape(re.sub(r"\s+", " ", propre)).strip()
 
 
+LIMITE_REPONSE = 2_000_000  # on ne bufferise jamais plus de 2 Mo
+
+
 def _get_json(url, timeout=10):
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as rep:
-        return json.loads(rep.read().decode("utf-8", errors="replace"))
+        brut = rep.read(LIMITE_REPONSE + 1)
+        if len(brut) > LIMITE_REPONSE:
+            raise ValueError("réponse trop volumineuse")
+        return json.loads(brut.decode("utf-8", errors="replace"))
 
 
 def chercher_wikipedia(requete, max_resultats=3, timeout=10):
@@ -162,7 +169,9 @@ def chercher_datagouv(requete, max_resultats=4, timeout=10):
                         or jeu.get("description") or "").strip())
             extrait = _nettoyer_html(extrait)[:400]
             n_res = len(jeu.get("resources") or [])
-            if n_res:
+            if n_res == 1:
+                extrait += " (1 ressource téléchargeable)"
+            elif n_res:
                 extrait += f" ({n_res} ressources téléchargeables)"
             resultats.append({
                 "nom": f"data.gouv.fr — {titre}",
@@ -180,9 +189,10 @@ def chercher_web(requete, max_resultats=5, timeout=10):
     Les portails importants (Kaggle, data.gouv.fr, Insee…) passent
     en premier dans les résultats.
     """
-    trouves = (chercher_datagouv(requete, max_resultats, timeout)
-               + chercher_wikipedia(requete, max_resultats, timeout)
-               + chercher_duckduckgo(requete, max_resultats, timeout))
+    part = max(2, timeout // 3)  # budget partagé : ~timeout au total
+    trouves = (chercher_datagouv(requete, max_resultats, part)
+               + chercher_wikipedia(requete, max_resultats, part)
+               + chercher_duckduckgo(requete, max_resultats, part))
     return trier_sources(dedupliquer(trouves))[:max_resultats]
 
 
@@ -199,6 +209,8 @@ def dedupliquer(resultats):
     """Enlève les doublons (même URL ou même domaine + même nom)."""
     vus, uniques = set(), []
     for res in resultats or []:
+        if not isinstance(res, dict):
+            continue
         cle = ((res.get("url") or "").rstrip("/").lower(), domaine(res.get("url")))
         if cle in vus or not res.get("url"):
             continue

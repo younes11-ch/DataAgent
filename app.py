@@ -40,6 +40,10 @@ st.markdown("""
   <div class="hero-sous">Envoie un fichier CSV, même sale : les agents le nettoient,
   détectent les anomalies, répondent à tes questions avec des chiffres vérifiés
   et construisent ton rapport.</div>
+  <div class="badges"><span class="badge">Nettoyage</span>
+  <span class="badge">Anomalies</span>
+  <span class="badge">Questions vérifiées</span>
+  <span class="badge">Rapport</span></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -76,6 +80,15 @@ section[data-testid="stSidebar"] h2 { font-size: 1.1rem; }
 .hero-sous { color: #d7efea; font-size: 1rem; margin-top: 8px; max-width: 62em; }
 .barre-nettoyage { background: #f0fdf9; border: 1px solid #ccfbf1;
   border-radius: 12px; padding: 12px 18px; margin: 0.6rem 0 1rem 0; }
+.badges { margin-top: 12px; }
+.badge { display: inline-block; background: #fff; color: #0f766e;
+  border-radius: 999px; font-size: .82rem; font-weight: 600;
+  padding: 3px 12px; margin: 0 6px 6px 0; }
+.etape { background: #fff; border: 1.5px solid #0f766e; border-radius: 10px;
+  padding: 10px 14px; text-align: center; color: #111827; font-size: .92rem; }
+.etape strong { display: block; color: #0f766e; font-size: .95rem; }
+.carte-recherche { background: #f0fdf9; border: 1px solid #ccfbf1;
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 1rem; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; } }
 </style>
@@ -129,9 +142,11 @@ with st.sidebar:
     st.slider("Questions suggérées", 2, 6, 4, key="nb_sug")
     st.toggle("Afficher les graphiques", value=True, key="voir_graph")
     st.toggle("Montrer le code par défaut", value=False, key="voir_code")
+    st.header("Recherche")
     st.toggle("Autoriser la recherche", value=True,
               key="autoriser_recherche",
               help="L'agent peut chercher des données sur le web sans fichier.")
+    st.header("Voix")
     st.toggle("Lecture vocale", value=False, key="lecture_vocale",
               help="Lit les réponses à voix haute (français).")
     if st.session_state.df is not None:
@@ -415,22 +430,35 @@ def verifier_test(test, reponse):
     return False
 
 
+et1, et2, et3 = st.columns(3)
+et1.markdown('<div class="etape"><strong>1 · Chercher</strong>'
+             "L'agent interroge plusieurs sources</div>",
+             unsafe_allow_html=True)
+et2.markdown('<div class="etape"><strong>2 · Vérifier</strong>'
+             "Audit sources, logique, sécurité</div>",
+             unsafe_allow_html=True)
+et3.markdown('<div class="etape"><strong>3 · Citer</strong>'
+             "Réponse avec confiance et liens</div>",
+             unsafe_allow_html=True)
+
 st.subheader("0 · Recherche sans fichier")
-st.write("Pas de CSV ? L'agent cherche lui-même sur le web, puis chaque "
-         "réponse passe l'audit (sources, logique, sécurité).")
-col_rech, col_btn = st.columns([4, 1])
-with col_rech:
-    question_web = st.text_input("Barre de recherche",
-                                 placeholder="Ex : taux de chômage France 2024",
-                                 key="question_web",
-                                 label_visibility="collapsed")
-with col_btn:
-    lancer_rech = st.button("Rechercher")
-if lancer_rech and (question_web or "").strip():
-    traiter_recherche(question_web.strip())
-    st.rerun()
+with st.container(border=True):
+    st.write("Pas de CSV ? L'agent cherche lui-même sur le web, puis chaque "
+             "réponse passe l'audit (sources, logique, sécurité).")
+    st.caption("Sources classées en premier : Kaggle, data.gouv.fr, Insee.")
+    col_rech, col_btn = st.columns([4, 1])
+    with col_rech:
+        question_web = st.text_input("Barre de recherche",
+                                     placeholder="Ex : taux de chômage France 2024",
+                                     key="question_web",
+                                     label_visibility="collapsed")
+    with col_btn:
+        lancer_rech = st.button("Rechercher")
+    if lancer_rech and (question_web or "").strip():
+        traiter_recherche(question_web.strip())
+        st.rerun()
 components.html(voix.html_micro(cle="global"), height=180)
-st.caption("🎤 Dictée en français : parle, la transcription s'affiche "
+st.caption("Dictée en français : parle, la transcription s'affiche "
            "ci-dessus, copie-la dans la barre de recherche ou dans le chat. "
            "Le voyant rouge indique l'écoute.")
 
@@ -620,7 +648,7 @@ if st.session_state.df is not None:
                     st.write("**Audit** : " + ag.get("audit", ""))
 
     components.html(voix.html_micro(cle="chat"), height=180)
-    st.caption("🎤 Dictée vocale (français) : dicte, copie la transcription "
+    st.caption("Dictée vocale (français) : dicte, copie la transcription "
                "dans le chat. Le voyant rouge = écoute en cours.")
     question = st.chat_input("Ex : quel est le total par ville ?")
     if question:

@@ -5,7 +5,7 @@
 
 import re
 
-VERDICTS = ("OK", "A CORRIGER", "REFUSE")
+VERDICTS = ("OK", "À CORRIGER", "REFUSE")
 CONFIANCES = ("faible", "moyen", "élevé")
 
 # Motifs de données sensibles / dangereuses (complète _nettoyer_erreur).
@@ -163,7 +163,7 @@ def decider(rap_sources, rap_logique, rap_securite, nb_domaines=0):
                           if "contredis" in p or "non retrouvés" in p
                           or "non vérifié" in p]
         confiance = "faible" if contradictions else "moyen"
-        return {"verdict": "A CORRIGER", "confiance": confiance,
+        return {"verdict": "À CORRIGER", "confiance": confiance,
                 "problemes": problemes, "points_non_verifies": points}
     confiance = "élevé" if nb_domaines >= 2 else "moyen"
     return {"verdict": "OK", "confiance": confiance, "problemes": [],
@@ -194,7 +194,7 @@ def pipeline_audit(question, fn_principal, sources=None,
         decision = decider(rap_s, rap_l, rap_sec, nb_domaines)
         rapports = {"sources": rap_s, "logique": rap_l,
                     "securite": rap_sec}
-        if decision["verdict"] != "A CORRIGER" or boucles > max_boucles:
+        if decision["verdict"] != "À CORRIGER" or boucles > max_boucles:
             return {"brouillon": brouillon, "verdict": decision["verdict"],
                     "confiance": decision["confiance"],
                     "problemes": decision["problemes"],

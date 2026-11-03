@@ -851,6 +851,13 @@ def _audit_chemin_csv(question, brouillon, nombres_calcules):
     return decision
 
 
+def _texte_sans_markdown(texte):
+    """Neutralise le markdown venu du web (images, liens, titres)."""
+    propre = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", texte or "")
+    propre = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", propre)
+    return re.sub(r"(?m)^#{1,6}\s*", "", propre)
+
+
 def _brouillon_sans_upload_hors_ligne(question, sources):
     """Brouillon local à partir des extraits (zéro inventé)."""
     if not sources:
@@ -858,7 +865,8 @@ def _brouillon_sans_upload_hors_ligne(question, sources):
                 "pour cette question. Reformule ou importe un fichier.")
     lignes = []
     for src in sources[:4]:
-        extrait = (src.get("extrait") or "").strip()[:300]
+        brut = src.get("extrait")
+        extrait = _texte_sans_markdown(brut).strip()[:300] if isinstance(brut, str) else ""
         if extrait:
             lignes.append(f"- {extrait} (source : {src.get('nom', '?')})")
     if not lignes:
@@ -867,14 +875,20 @@ def _brouillon_sans_upload_hors_ligne(question, sources):
     return ("D'après les sources consultées :\n" + "\n".join(lignes))
 
 
-def _brouillon_sans_upload_ia(question, sources, problemes=None):
-    """Agent principal (avec IA) : rédige depuis les extraits, sans inventer."""
-    bloc = "\n".join(
-        f"<extrait nom=\"{s.get('nom', '?')}\" url=\"{s.get('url', '')}\">"
-        f"{(s.get('extrait') or '')[:600]}</extrait>" for s in sources[:6])
+def _construire_prompt_recherche(question, sources, problemes=None):
+    """Prompt de l'agent principal : extraits délimités et neutralisés."""
+    morceaux = []
+    for s in (sources or [])[:6]:
+        brut = s.get("extrait")
+        texte = (brut[:600] if isinstance(brut, str) else "")
+        texte = texte.replace("</extrait>", "[fin extrait]")
+        morceaux.append(
+            f"<extrait nom=\"{s.get('nom', '?')}\" url=\"{s.get('url', '')}\">"
+            f"{texte}</extrait>")
+    bloc = "\n".join(morceaux)
     reprise = (f"\nProblèmes signalés par les auditeurs : "
                f"{'; '.join(problemes)}.\nCorrige-les." if problemes else "")
-    prompt = (
+    return (
         "Tu es un agent de recherche. Question : " + (question or "")
         + "\nSources (seule vérité autorisée, entre balises <extrait>) :\n"
         + (bloc or "(aucune)")
@@ -888,7 +902,12 @@ def _brouillon_sans_upload_ia(question, sources, problemes=None):
         + '\nRéponds UNIQUEMENT avec un objet JSON : '
           '{"brouillon": "le texte"}'
     )
+
+
+def _brouillon_sans_upload_ia(question, sources, problemes=None):
+    """Agent principal (avec IA) : rédige depuis les extraits, sans inventer."""
     try:
+        prompt = _construire_prompt_recherche(question, sources, problemes)
         return _extraire_json(_demander(prompt)).get("brouillon", "") or ""
     except Exception:
         return ""
@@ -927,7 +946,8 @@ def analyser_sans_upload(question, historique=None, permettre_recherche=True,
     via_api = cle_api_disponible()
     trouve = rechercher(question, fonction_recherche=fonction_recherche)
     sources = trouve["sources"]
-    extraits = [s.get("extrait", "") for s in sources if s.get("extrait")]
+    extraits = [s.get("extrait") for s in sources
+                if isinstance(s.get("extrait"), str) and s.get("extrait")]
 
     # Échec IA = repli immédiat et définitif : l'audit boucle jusqu'à
     # max_boucles+1 fois, et chaque boucle réessayait l'appel bloqué
@@ -964,7 +984,7 @@ def analyser_sans_upload(question, historique=None, permettre_recherche=True,
                    + " Reformule ta question.")
     else:
         reponse = audit["brouillon"]
-        if verdict == "A CORRIGER" and audit["points_non_verifies"]:
+        if verdict == "À CORRIGER" and audit["points_non_verifies"]:
             reponse += ("\n\n⚠ Points non vérifiés : "
                         + "; ".join(audit["points_non_verifies"][:5])
                         + ". Je ne peux pas confirmer ces points.")
