@@ -132,8 +132,11 @@ for cle, defaut in [("identifiant", None), ("nom", ""), ("brut", None),
                     ("base_nettoyee", None), ("journal", []), ("annule", False),
                     ("strategie_appliquee", None), ("det_aberrantes", None),
                     ("resume_exec", None), ("rapport_cache", None),
-                    ("csv_cache", None), ("autoriser_recherche", True),
-                    ("lecture_vocale", False)]:
+                    ("csv_cache", None)]:
+    # NOTE : ne jamais pré-remplir ici une clé aussi passée en `value=`
+    # à un widget (autoriser_recherche, lecture_vocale) : Streamlit
+    # l'interdit (erreur vue dans les logs Cloud) ; le `value=` du
+    # widget sert déjà de défaut, et le reste du code lit via .get().
     if cle not in st.session_state:
         st.session_state[cle] = defaut
 
