@@ -287,6 +287,16 @@ def questions_secours(profil):
     return qs[:4]
 
 
+def _lien_sain(url):
+    """Lien affichable : http(s) sans caractères de rupture markdown."""
+    propre = (url or "").strip()
+    if not propre.startswith(("http://", "https://")):
+        return ""
+    if any(c in propre for c in " \t\n()\"'\\<>"):
+        return ""
+    return propre
+
+
 def afficher_sources(sources):
     """Sources (nom + lien) sous chaque réponse web."""
     if not sources:
@@ -294,13 +304,16 @@ def afficher_sources(sources):
     st.caption("Sources :")
     for src in sources:
         nom = (src.get("nom", "Source") or "Source").replace("[", "(").replace("]", ")")
-        url = (src.get("url", "") or "").strip()
-        if url.startswith(("http://", "https://")):
+        url = _lien_sain(src.get("url"))
+        if url:
             st.markdown(f"- [{nom}]({url})")
-        elif url:
-            st.write(f"- {nom}")
         else:
             st.write(f"- {nom}")
+        fichier = _lien_sain(src.get("fichier"))
+        if fichier:
+            fmt = (src.get("format_fichier") or "").strip() or "fichier"
+            st.markdown(f"  Télécharger le fichier ({fmt}) : "
+                        f"[lien direct]({fichier})")
 
 
 def afficher_audit(resultat):

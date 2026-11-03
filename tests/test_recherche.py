@@ -116,6 +116,36 @@ def test_trier_sources_importants_d_abord():
     assert tries[0]["nom"] == "Kaggle"
 
 
+def test_choisir_fichier_prefere_csv():
+    resources = [
+        {"url": "https://x.example/a.pdf", "format": "pdf"},
+        {"url": "https://x.example/a.csv", "format": "CSV"},
+        {"url": "notaurl", "format": "csv"},
+    ]
+    url, fmt = recherche._choisir_fichier(resources)
+    assert url == "https://x.example/a.csv" and fmt == "csv"
+    assert recherche._choisir_fichier([]) == ("", "")
+    assert recherche._choisir_fichier([None, "x"]) == ("", "")
+
+
+def test_chercher_web_budget_epuise(monkeypatch):
+    appels = []
+
+    def faux(nom):
+        def aller(requete, max_resultats=4, timeout=15):
+            appels.append(nom)
+            return []
+        return aller
+
+    monkeypatch.setattr(recherche, "chercher_datagouv", faux("gouv"))
+    monkeypatch.setattr(recherche, "chercher_wikipedia", faux("wiki"))
+    monkeypatch.setattr(recherche, "chercher_duckduckgo", faux("ddg"))
+    assert recherche.chercher_web("taux ?", timeout=0) == []
+    assert appels == []
+    recherche.chercher_web("taux ?", timeout=60)
+    assert appels == ["gouv", "wiki", "ddg"]
+
+
 def test_chercher_datagouv_parse(monkeypatch):
     def faux_json(url, timeout=10):
         return {"data": [
@@ -132,6 +162,7 @@ def test_chercher_datagouv_parse(monkeypatch):
     assert res[0]["url"].startswith("https://www.data.gouv.fr")
     assert "2 ressources" in res[0]["extrait"]
     assert recherche.est_important(res[0]["url"])
+    assert res[0]["fichier"] == ""  # aucune ressource avec URL ici
 
 
 def test_chercher_datagouv_panne_isolee(monkeypatch):

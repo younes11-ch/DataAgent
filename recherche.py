@@ -5,6 +5,7 @@
 import html
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 
@@ -149,11 +150,30 @@ def chercher_duckduckgo(requete, max_resultats=3, timeout=10):
         return []
 
 
-def chercher_datagouv(requete, max_resultats=4, timeout=10):
+FORMATS_FICHIERS = ("csv", "xls", "xlsx", "parquet", "zip", "json")
+
+
+def _choisir_fichier(resources):
+    """Rend (url, format) du meilleur fichier téléchargeable, ou ("", "")."""
+    candidates = [r for r in (resources or [])
+                  if isinstance(r, dict)
+                  and isinstance(r.get("url"), str)
+                  and r["url"].startswith(("http://", "https://"))]
+    for prefere in FORMATS_FICHIERS:
+        for res in candidates:
+            if (res.get("format") or "").strip().lower() == prefere:
+                return res["url"], prefere
+    if candidates:
+        return candidates[0]["url"], (candidates[0].get("format") or "").strip().lower()
+    return "", ""
+
+
+def chercher_datagouv(requete, max_resultats=4, timeout=15):
     """Cherche des jeux de données sur data.gouv.fr (API ouverte, sans clé).
 
-    Rend [{nom, url, extrait}] où l'URL est la fiche du jeu de données
-    (téléchargeable depuis ses ressources).
+    Rend [{nom, url, extrait, fichier, format_fichier}] : l'URL est la
+    fiche du jeu, `fichier` le lien direct du meilleur fichier (CSV
+    préféré) pour le télécharger sans passer par le site.
     """
     try:
         params = urllib.parse.urlencode(
@@ -162,37 +182,49 @@ def chercher_datagouv(requete, max_resultats=4, timeout=10):
                             + params, timeout=timeout)
         resultats = []
         for jeu in donnees.get("data", [])[:max_resultats]:
+            if not isinstance(jeu, dict):
+                continue
             titre = (jeu.get("title") or "").strip()
             if not titre:
                 continue
             extrait = ((jeu.get("description_short")
                         or jeu.get("description") or "").strip())
+            if not isinstance(extrait, str):
+                extrait = ""
             extrait = _nettoyer_html(extrait)[:400]
             n_res = len(jeu.get("resources") or [])
             if n_res == 1:
                 extrait += " (1 ressource téléchargeable)"
             elif n_res:
                 extrait += f" ({n_res} ressources téléchargeables)"
+            fichier, format_fichier = _choisir_fichier(jeu.get("resources"))
             resultats.append({
                 "nom": f"data.gouv.fr — {titre}",
                 "url": jeu.get("page") or jeu.get("uri") or "",
                 "extrait": extrait,
+                "fichier": fichier,
+                "format_fichier": format_fichier,
             })
         return [r for r in resultats if r["url"]]
     except Exception:
         return []
 
 
-def chercher_web(requete, max_resultats=5, timeout=10):
+def chercher_web(requete, max_resultats=5, timeout=15):
     """Cherche sur plusieurs sources et croise (open data + web).
 
     Les portails importants (Kaggle, data.gouv.fr, Insee…) passent
-    en premier dans les résultats.
+    en premier dans les résultats. Budget global `timeout` : on arrête
+    d'interroger quand il est épuisé au lieu de tronquer chaque source.
     """
-    part = max(2, timeout // 3)  # budget partagé : ~timeout au total
-    trouves = (chercher_datagouv(requete, max_resultats, part)
-               + chercher_wikipedia(requete, max_resultats, part)
-               + chercher_duckduckgo(requete, max_resultats, part))
+    debut = time.monotonic()
+    trouves = []
+    for interroger in (chercher_datagouv, chercher_wikipedia,
+                       chercher_duckduckgo):
+        restant = timeout - (time.monotonic() - debut)
+        if restant < 2:
+            break
+        trouves += interroger(requete, max_resultats, min(timeout, restant))
     return trier_sources(dedupliquer(trouves))[:max_resultats]
 
 
@@ -221,13 +253,14 @@ def dedupliquer(resultats):
 
 def domaines_independants(sources, minimum=2):
     """Vrai si au moins `minimum` domaines distincts parmi les sources."""
-    distincts = {domaine(s.get("url")) for s in (sources or []) if s.get("url")}
+    distincts = {domaine(s.get("url")) for s in (sources or [])
+                 if isinstance(s, dict) and s.get("url")}
     distincts.discard("")
     return len(distincts) >= minimum
 
 
 def rechercher(question, max_requetes=3, max_par_requete=4,
-               fonction_recherche=None, timeout=10):
+               fonction_recherche=None, timeout=30):
     """Pipeline de recherche autonome : reformule, cherche, croise.
 
     `fonction_recherche(requete)` peut être injectée (tests, sources

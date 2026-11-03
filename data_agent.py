@@ -944,7 +944,8 @@ def analyser_sans_upload(question, historique=None, permettre_recherche=True,
                 "agents": trace}
     _etape("Recherche : je reformule et j'interroge plusieurs sources…")
     via_api = cle_api_disponible()
-    trouve = rechercher(question, fonction_recherche=fonction_recherche)
+    trouve = rechercher(question, max_requetes=2,
+                        fonction_recherche=fonction_recherche)
     sources = trouve["sources"]
     extraits = [s.get("extrait") for s in sources
                 if isinstance(s.get("extrait"), str) and s.get("extrait")]
@@ -970,6 +971,9 @@ def analyser_sans_upload(question, historique=None, permettre_recherche=True,
                            donnees_calculees=calc, extraits=extraits or None,
                            max_boucles=max_boucles)
     verdict = audit["verdict"]
+    if audit["confiance"] == "élevé" and "je ne peux pas confirmer" in (
+            audit["brouillon"] or "").lower():
+        audit["confiance"] = "moyen"
     points = audit["points_non_verifies"] or (
         [] if sources else ["aucune source trouvée"])
     audit["points_non_verifies"] = points
