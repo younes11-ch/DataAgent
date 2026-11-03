@@ -229,6 +229,8 @@ def rechercher(question, max_requetes=3, max_par_requete=4,
                 trouves = fonction_recherche(requete) or []
             else:
                 trouves = chercher_web(requete, max_par_requete, timeout)
+            trouves = [t for t in (trouves or [])
+                       if isinstance(t, dict) and isinstance(t.get("url"), str)]
         except Exception:
             trouves = []
         par_requete[requete] = trouves

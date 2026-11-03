@@ -278,10 +278,12 @@ def afficher_sources(sources):
         return
     st.caption("Sources :")
     for src in sources:
-        nom = src.get("nom", "Source") or "Source"
-        url = src.get("url", "") or ""
-        if url:
+        nom = (src.get("nom", "Source") or "Source").replace("[", "(").replace("]", ")")
+        url = (src.get("url", "") or "").strip()
+        if url.startswith(("http://", "https://")):
             st.markdown(f"- [{nom}]({url})")
+        elif url:
+            st.write(f"- {nom}")
         else:
             st.write(f"- {nom}")
 

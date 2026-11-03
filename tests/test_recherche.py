@@ -52,6 +52,18 @@ def test_rechercher_erreur_source_isolee():
     assert res["sources"] == []
 
 
+def test_rechercher_filtre_resultats_malformes():
+    def faux(requete):
+        return [{"nom": "ok", "url": "https://x.example/a", "extrait": "e"},
+                "pas-un-dict",
+                {"nom": "sans-url", "extrait": "e"},
+                {"nom": "url-nulle", "url": None, "extrait": "e"}]
+
+    res = recherche.rechercher("test ?", fonction_recherche=faux)
+    assert len(res["sources"]) == 1
+    assert res["sources"][0]["nom"] == "ok"
+
+
 def test_sans_upload_refuse_si_desactive(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     res = data_agent.analyser_sans_upload("taux de chômage ?",
