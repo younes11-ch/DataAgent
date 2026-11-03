@@ -885,7 +885,18 @@ def _brouillon_sans_upload_hors_ligne(question, sources):
     if not sources:
         return ("Je ne peux pas confirmer : aucune source fiable trouvée "
                 "pour cette question. Reformule ou importe un fichier.")
+    fichiers = [(src.get("nom", "?"), (src.get("format_fichier") or "").strip())
+                for src in sources
+                if isinstance(src.get("fichier"), str) and src.get("fichier")]
     lignes = []
+    if fichiers:
+        lignes.append("Fichiers trouvés (chargeables en 1 clic ci-dessous) :")
+        vus = set()
+        for nom, fmt in fichiers[:5]:
+            if nom in vus:
+                continue
+            vus.add(nom)
+            lignes.append(f"- {nom}" + (f" ({fmt})" if fmt else ""))
     for src in sources[:4]:
         brut = src.get("extrait")
         extrait = _texte_sans_markdown(brut).strip()[:300] if isinstance(brut, str) else ""

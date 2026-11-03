@@ -184,6 +184,53 @@ def test_trier_sources_importants_d_abord():
     assert tries[0]["nom"] == "Kaggle"
 
 
+def test_pertinence_filtre_hors_sujet():
+    assert recherche.est_pertinent("House price index",
+                                   "median home prices USA", "house prices USA")
+    assert not recherche.est_pertinent("Palantir Technologies",
+                                       "data company", "house prices USA")
+    assert not recherche.est_pertinent("Toy Story", "film", "house prices USA")
+    assert not recherche.est_pertinent("Dr House", "série télé", "house prices USA")
+    assert not recherche.est_pertinent("Mobile (Alabama)", "ville", "house prices USA")
+    assert recherche.est_pertinent("Chômage en France", "taux",
+                                   "taux de chômage France")
+    assert not recherche.est_pertinent("Ville quelconque",
+                                       "house prices stables ici",
+                                       "house prices USA")
+    assert recherche.est_pertinent("n'importe quoi", "", "")
+
+
+def test_chercher_socrata_parse(monkeypatch):
+    def faux_json(url, timeout=10):
+        return {"results": [
+            {"resource": {"name": "House Price Index",
+                           "id": "kf98-j89e", "description": "FHFA HPI."},
+             "metadata": {"domain": "data.ct.gov"},
+             "permalink": "https://data.ct.gov/d/kf98-j89e"},
+            {"resource": {"name": "", "id": ""}, "metadata": {}},
+        ]}
+
+    monkeypatch.setattr(recherche, "_get_json", faux_json)
+    res = recherche.chercher_socrata("house prices")
+    assert len(res) == 1
+    assert res[0]["fichier"] == ("https://data.ct.gov/api/views/kf98-j89e"
+                                 "/rows.csv?accessType=DOWNLOAD")
+    assert res[0]["format_fichier"] == "csv"
+    assert recherche.est_important("https://data.ct.gov/d/kf98-j89e")
+
+
+def test_brouillon_fichiers_en_avant(monkeypatch):
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    sources = [
+        {"nom": "data.gouv.fr — Prix", "url": "https://www.data.gouv.fr/x",
+         "extrait": "Prix au mètre carré 3000.",
+         "fichier": "https://static.data.gouv.fr/f.csv", "format_fichier": "csv"},
+    ]
+    brouillon = data_agent._brouillon_sans_upload_hors_ligne("prix ?", sources)
+    assert "Fichiers trouvés" in brouillon
+    assert "(csv)" in brouillon
+
+
 def test_choisir_fichier_prefere_csv():
     resources = [
         {"url": "https://x.example/a.pdf", "format": "pdf"},

@@ -37,6 +37,12 @@ def test_sources_extraits_non_recoupes():
     assert rap2["ok"]
 
 
+def test_logique_annees_exemptees():
+    assert audit.auditer_logique("Données 2024.", [], "")["ok"]
+    rap = audit.auditer_sources("Données 2024.", DEUX_SOURCES)
+    assert rap["ok"]
+
+
 def test_logique_chiffre_calcule_ok():
     rap = audit.auditer_logique("Le total vaut 60.", [(None, 60.0)], "total ?")
     assert rap["ok"]

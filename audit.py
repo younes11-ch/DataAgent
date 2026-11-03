@@ -80,7 +80,8 @@ def auditer_sources(brouillon, sources, extraits=None, question=""):
 
     problemes, non_recoupes = [], []
     chiffres = [(b, v) for b, v in _nombres(brouillon)
-                if not (v.is_integer() and abs(v) <= 31)]
+                if not (v.is_integer() and abs(v) <= 31)
+                and not (v.is_integer() and 1900 <= v <= 2100)]
     autorises = {v for _, v in _nombres(question)}
     importants = [(b, v) for b, v in chiffres
                   if not any(abs(v - a) < 1e-9 for a in autorises)]
@@ -115,6 +116,8 @@ def auditer_logique(brouillon, donnees_calculees=None, question=""):
     for brut, valeur in _nombres(brouillon):
         if valeur.is_integer() and abs(valeur) <= 31:
             continue
+        if valeur.is_integer() and 1900 <= valeur <= 2100:
+            continue  # années (titres, périodes) : pas des affirmations
         if any(abs(valeur - a) < 1e-9 for a in autorises_q):
             continue
         if calc and not any(_proches(valeur, c) for c in calc):

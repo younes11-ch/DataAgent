@@ -42,8 +42,11 @@ def est_important(url):
         hote = urllib.parse.urlparse(url or "").netloc.lower()
         if hote.startswith("www."):
             hote = hote[4:]
-        return any(hote == d or hote.endswith("." + d)
-                   for d in SITES_IMPORTANTS)
+        if any(hote == d or hote.endswith("." + d)
+                for d in SITES_IMPORTANTS):
+            return True
+        return (hote.endswith(".gov") or hote.endswith(".gouv.fr")
+                or hote.endswith(".europa.eu"))
     except Exception:
         return False
 
@@ -141,6 +144,62 @@ def _get_json(url, timeout=10):
         return json.loads(brut.decode("utf-8", errors="replace"))
 
 
+MOTS_VIDES_3 = {"les", "des", "une", "aux", "ces", "ses", "avec", "dans",
+                "pour", "tout", "the", "and", "for", "are", "you", "who",
+                "what", "how", "why", "not", "but", "all", "one", "two"}
+
+
+def _racine(mot):
+    """Normalise un mot (accents, pluriel) pour comparer le sens."""
+    import unicodedata
+    simple = "".join(c for c in unicodedata.normalize("NFD", mot.lower())
+                     if unicodedata.category(c) != "Mn")
+    if len(simple) > 4 and simple.endswith("s"):
+        simple = simple[:-1]
+    return simple
+
+
+def mots_significatifs(texte):
+    """Mots porteurs de sens d'un texte (pour filtrer le hors-sujet)."""
+    trouves = set()
+    for m in re.findall(r"[\w\-']+", texte or ""):
+        bas = m.lower()
+        if bas in MOTS_VIDES or bas in MOTS_VIDES_3 or len(bas) <= 2:
+            continue
+        trouves.add(_racine(bas))
+    return trouves
+
+
+def est_pertinent(titre, extrait, requete):
+    """Vrai si le résultat partage assez de sens avec la requête."""
+    cles = mots_significatifs(requete)
+    if not cles:
+        return True
+    communs = len(cles & mots_significatifs(f"{titre or ''} {extrait or ''}"))
+    if len(cles) == 1:
+        return communs >= 1
+    # Le titre doit porter au moins un mot clé : sinon un mot perdu dans
+    # un long extrait suffit à faire passer un hors-sujet.
+    titre_part = len(cles & mots_significatifs(titre))
+    return communs >= 2 and titre_part >= 1
+
+
+def _variantes_requete(requete):
+    """Question complète puis version courte (mots forts seuls)."""
+    mots = [m for m in re.findall(r"[\w\-']+", requete or "")
+            if len(m) > 2 and m.lower() not in MOTS_VIDES
+            and m.lower() not in MOTS_VIDES_3]
+    variantes = []
+    if (requete or "").strip():
+        variantes.append(requete.strip())
+    for fin in (len(mots), max(1, len(mots) - 1)):
+        courte = " ".join(mots[:fin])
+        if courte and courte not in variantes:
+            variantes.append(courte)
+            break
+    return variantes[:2]
+
+
 def chercher_wikipedia(requete, max_resultats=3, timeout=10):
     """Cherche sur Wikipédia FR (sans clé). Rend [{nom, url, extrait}]."""
     try:
@@ -153,11 +212,14 @@ def chercher_wikipedia(requete, max_resultats=3, timeout=10):
         resultats = []
         for item in donnees.get("query", {}).get("search", [])[:max_resultats]:
             titre = item.get("title", "")
+            extrait = _nettoyer_html(item.get("snippet", ""))
+            if not est_pertinent(titre, extrait, requete):
+                continue
             resultats.append({
                 "nom": f"Wikipédia — {titre}",
                 "url": ("https://fr.wikipedia.org/wiki/"
                         + urllib.parse.quote(titre.replace(" ", "_"))),
-                "extrait": _nettoyer_html(item.get("snippet", "")),
+                "extrait": extrait,
             })
         return resultats
     except Exception:
@@ -182,7 +244,7 @@ def chercher_duckduckgo(requete, max_resultats=3, timeout=10):
         for sujet in donnees.get("RelatedTopics", [])[:max_resultats]:
             texte = (sujet.get("Text") or "").strip()
             url = sujet.get("FirstURL") or ""
-            if texte and url:
+            if texte and url and est_pertinent(texte, texte, requete):
                 resultats.append({
                     "nom": texte.split("—")[0].split("-")[0].strip()[:60]
                     or "DuckDuckGo",
@@ -220,10 +282,14 @@ def chercher_datagouv(requete, max_resultats=4, timeout=15):
     préféré) pour le télécharger sans passer par le site.
     """
     try:
-        params = urllib.parse.urlencode(
-            {"q": requete, "page_size": max_resultats})
-        donnees = _get_json("https://www.data.gouv.fr/api/1/datasets/?"
-                            + params, timeout=timeout)
+        donnees = {"data": []}
+        for variante in _variantes_requete(requete):
+            params = urllib.parse.urlencode(
+                {"q": variante, "page_size": max_resultats})
+            donnees = _get_json("https://www.data.gouv.fr/api/1/datasets/?"
+                                + params, timeout=timeout)
+            if donnees.get("data"):
+                break
         resultats = []
         for jeu in donnees.get("data", [])[:max_resultats]:
             if not isinstance(jeu, dict):
@@ -254,7 +320,48 @@ def chercher_datagouv(requete, max_resultats=4, timeout=15):
         return []
 
 
-def chercher_web(requete, max_resultats=5, timeout=15):
+def chercher_socrata(requete, max_resultats=4, timeout=15):
+    """Cherche des jeux de données US/ouverts via Socrata (sans clé).
+
+    Rend [{nom, url, extrait, fichier, format_fichier}] avec `fichier` =
+    lien direct de téléchargement CSV du jeu de données.
+    """
+    try:
+        donnees = {"results": []}
+        for variante in _variantes_requete(requete):
+            params = urllib.parse.urlencode(
+                {"q": variante, "limit": max_resultats, "only": "datasets"})
+            donnees = _get_json("https://api.us.socrata.com/api/catalog/v1?"
+                                + params, timeout=timeout)
+            if donnees.get("results"):
+                break
+        resultats = []
+        for item in donnees.get("results", [])[:max_resultats]:
+            if not isinstance(item, dict):
+                continue
+            res = item.get("resource") or {}
+            nom = (res.get("name") or "").strip()
+            rid = res.get("id") or ""
+            domaine_ = ((item.get("metadata") or {}).get("domain") or "").strip()
+            if not nom or not rid or not domaine_:
+                continue
+            extrait = res.get("description") or ""
+            if not isinstance(extrait, str):
+                extrait = ""
+            resultats.append({
+                "nom": f"{domaine_} — {nom}",
+                "url": item.get("permalink") or "",
+                "extrait": _nettoyer_html(extrait)[:400],
+                "fichier": (f"https://{domaine_}/api/views/{rid}"
+                            "/rows.csv?accessType=DOWNLOAD"),
+                "format_fichier": "csv",
+            })
+        return [r for r in resultats if r["url"]]
+    except Exception:
+        return []
+
+
+def chercher_web(requete, max_resultats=5, timeout=25):
     """Cherche sur plusieurs sources et croise (open data + web).
 
     Les portails importants (Kaggle, data.gouv.fr, Insee…) passent
@@ -263,8 +370,8 @@ def chercher_web(requete, max_resultats=5, timeout=15):
     """
     debut = time.monotonic()
     trouves = []
-    for interroger in (chercher_datagouv, chercher_wikipedia,
-                       chercher_duckduckgo):
+    for interroger in (chercher_datagouv, chercher_socrata,
+                       chercher_wikipedia, chercher_duckduckgo):
         restant = timeout - (time.monotonic() - debut)
         if restant < 2:
             break
