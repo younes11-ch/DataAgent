@@ -101,6 +101,37 @@ def test_telecharger_fichier_ok_et_limites(monkeypatch):
         pass
 
 
+def test_lire_contenu_csv_et_excel():
+    import pandas as pd
+
+    df = recherche.lire_contenu("a;b\n1;2\n".encode("latin-1"), "f.csv")
+    assert list(df.columns) == ["a", "b"] and len(df) == 1
+    df2 = recherche.lire_contenu(b"a,b\n1,2\n", "sans-extension", "csv")
+    assert len(df2) == 1
+
+    vu = {}
+
+    def faux_read_excel(buf, **kwargs):
+        vu["ok"] = True
+        return pd.DataFrame({"x": [1]})
+
+    import unittest.mock as mock
+
+    with mock.patch.object(pd, "read_excel", faux_read_excel):
+        df4 = recherche.lire_contenu(b"faux", "f.xls")
+        assert list(df4.columns) == ["x"] and vu.get("ok")
+
+    def sans_moteur(buf, **kwargs):
+        raise ImportError("No module named 'openpyxl'")
+
+    with mock.patch.object(pd, "read_excel", sans_moteur):
+        try:
+            recherche.lire_contenu(b"faux", "f.xlsx")
+            assert False, "moteur manquant accepté"
+        except ValueError as e:
+            assert "openpyxl" in str(e)
+
+
 def test_sans_upload_refuse_si_desactive(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     res = data_agent.analyser_sans_upload("taux de chômage ?",

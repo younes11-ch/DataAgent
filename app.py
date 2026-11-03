@@ -117,6 +117,12 @@ def lire_csv(contenu: bytes, nom: str):
     return pd.read_csv(io.BytesIO(contenu), encoding="latin-1")
 
 
+def lire_tableau(contenu: bytes, nom: str, format_fichier=""):
+    """Lit un CSV ou un Excel (1er onglet) depuis des octets."""
+    from recherche import lire_contenu
+    return lire_contenu(contenu, nom, format_fichier)
+
+
 for cle, defaut in [("identifiant", None), ("nom", ""), ("brut", None),
                     ("df", None), ("profil", None), ("resume", None),
                     ("ambigues", []), ("nettoyage", None), ("version", ""),
@@ -323,20 +329,21 @@ def boutons_charger(sources, prefixe):
         if not fichier:
             continue
         nom = ((src or {}).get("nom", "fichier") or "fichier")[:50]
+        fmt = ((src or {}).get("format_fichier") or "").strip().lower()
         if st.button(f"Charger dans l'app : {nom}", key=f"{prefixe}-load-{idx}"):
-            charger_url_dans_app(fichier, nom)
+            charger_url_dans_app(fichier, nom, fmt)
 
 
-def charger_url_dans_app(url, nom):
+def charger_url_dans_app(url, nom, format_fichier=""):
     """Télécharge un fichier trouvé par la recherche et l'analyse (comme un upload)."""
     from recherche import telecharger_fichier
     try:
         with st.spinner("Téléchargement du fichier…"):
             contenu = telecharger_fichier(url)
         try:
-            tableau = lire_csv(contenu, nom)
+            tableau = lire_tableau(contenu, nom, format_fichier)
         except Exception:
-            st.error("Impossible de lire ce fichier (CSV attendu).")
+            st.error("Impossible de lire ce fichier (CSV ou Excel attendu).")
             return
         if len(tableau) == 0 or len(tableau.columns) == 0:
             st.error("Ce fichier est vide.")
@@ -546,16 +553,17 @@ st.caption("Dictée en français : parle, la transcription s'affiche "
            "ci-dessus, copie-la dans la barre de recherche ou dans le chat. "
            "Le voyant rouge indique l'écoute.")
 
-fichier = st.file_uploader("Envoie ton fichier de données (même sale)", type=["csv"])
+fichier = st.file_uploader("Envoie ton fichier de données (CSV ou Excel, même sale)",
+                            type=["csv", "xlsx", "xls"])
 
 if fichier is not None:
     contenu = fichier.getvalue()
     identifiant = (fichier.name, len(contenu))
     if st.session_state.identifiant != identifiant:
         try:
-            brut_lu = lire_csv(contenu, fichier.name)
+            brut_lu = lire_tableau(contenu, fichier.name)
         except Exception:
-            st.error("Impossible de lire ce fichier. Vérifie que c'est bien un CSV.")
+            st.error("Impossible de lire ce fichier. Vérifie que c'est bien un CSV ou un Excel.")
             st.stop()
         if len(brut_lu) == 0 or len(brut_lu.columns) == 0:
             st.error("Ce fichier est vide : envoie un CSV avec au moins une ligne.")

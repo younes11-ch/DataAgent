@@ -3,6 +3,7 @@
 # Les tests injectent une `fonction_recherche` factice : aucun réseau en CI.
 
 import html
+import io
 import json
 import re
 import time
@@ -87,6 +88,30 @@ def _nettoyer_html(texte):
 
 LIMITE_REPONSE = 2_000_000  # on ne bufferise jamais plus de 2 Mo
 LIMITE_FICHIER = 20_000_000  # jeu de données max chargeable (20 Mo)
+
+
+def lire_contenu(contenu, nom="", format_fichier=""):
+    """Lit un CSV ou un Excel (1er onglet) depuis des octets."""
+    import pandas as pd
+
+    fmt = ((format_fichier or "").strip().lower()
+           or (nom.rsplit(".", 1)[-1].lower() if "." in nom else ""))
+    if fmt in ("xls", "xlsx"):
+        try:
+            return pd.read_excel(io.BytesIO(contenu))
+        except ImportError:
+            raise ValueError("Lecture Excel indisponible : installe openpyxl "
+                             "et xlrd (`uv pip install --python .venv "
+                             "openpyxl xlrd`).")
+    for enc in ("utf-8", "latin-1"):
+        for sep in (",", ";"):
+            try:
+                df = pd.read_csv(io.BytesIO(contenu), sep=sep, encoding=enc)
+                if len(df.columns) > 1:
+                    return df
+            except Exception:
+                continue
+    return pd.read_csv(io.BytesIO(contenu), encoding="latin-1")
 
 
 def telecharger_fichier(url, timeout=20, limite=LIMITE_FICHIER):
