@@ -23,6 +23,11 @@ def appliquer(df: pd.DataFrame, strategie: str) -> dict:
     "auto" ne change rien : on garde le résultat du Nettoyeur.
     """
     journal: list[str] = []
+    # Détails structurés (fonctionnalité 2) : une entrée par transformation,
+    # avec colonne, action, lignes touchées et justification. "journal" (phrases)
+    # est inchangé pour ne casser aucun affichage existant.
+    details: list[dict] = []
+    remplissages: dict = {}
     if strategie not in STRATEGIES:
         strategie = "auto"
     manq_avant = int(df.isna().sum().sum())
@@ -32,14 +37,20 @@ def appliquer(df: pd.DataFrame, strategie: str) -> dict:
         else:
             journal.append("Imputation automatique conservée "
                            "(médiane/mode déjà appliqués par le nettoyage).")
-        return {"df": df.copy(), "journal": journal, "restantes": manq_avant}
+        return {"df": df.copy(), "journal": journal, "restantes": manq_avant,
+                "details": details, "remplissages": remplissages}
 
     res = df.copy()
     if strategie == "supprimer":
         lignes_avant = len(res)
         res = res.dropna().reset_index(drop=True)
-        journal.append(f"{lignes_avant - len(res)} lignes incomplètes supprimées "
+        supprimees = lignes_avant - len(res)
+        journal.append(f"{supprimees} lignes incomplètes supprimées "
                        f"sur {lignes_avant} ({manq_avant} valeurs manquantes).")
+        details.append({"colonne": "", "action": "supprimer_lignes_incompletes",
+                        "lignes": supprimees,
+                        "justification": "lignes avec valeurs manquantes, "
+                                         "choix explicite de l'utilisateur"})
     else:
         remplis = 0
         for col in res.columns:
@@ -57,6 +68,10 @@ def appliquer(df: pd.DataFrame, strategie: str) -> dict:
                 if modes.empty:
                     journal.append(f"Colonne {col} entièrement vide : "
                                    "impossible à remplir, conservée telle quelle.")
+                    details.append({"colonne": str(col), "action": "colonne_conservee",
+                                    "lignes": 0,
+                                    "justification": "colonne entièrement vide, "
+                                                     "impossible à remplir"})
                     continue
                 valeur = modes.iloc[0]
                 methode = "le mode"
@@ -65,7 +80,13 @@ def appliquer(df: pd.DataFrame, strategie: str) -> dict:
             res[col] = res[col].fillna(valeur)
             remplis += n_vides
             journal.append(f"Colonne {col} : {n_vides} valeurs remplies par {methode}.")
+            details.append({"colonne": str(col), "action": "remplir_manquants",
+                            "lignes": n_vides,
+                            "justification": f"valeur {valeur!r} "
+                                             f"({methode}), choix « {strategie} »"})
+            remplissages[str(col)] = valeur
         if remplis == 0:
             journal.append("Aucune valeur n'a pu être remplie.")
     restantes = int(res.isna().sum().sum())
-    return {"df": res, "journal": journal, "restantes": restantes}
+    return {"df": res, "journal": journal, "restantes": restantes,
+            "details": details, "remplissages": remplissages}

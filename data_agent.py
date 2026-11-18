@@ -64,10 +64,12 @@ NOMS_INTERDITS = {"os", "sys", "subprocess", "socket", "requests", "urllib",
 FONCTIONS_INTERDITES = {"open", "eval", "exec", "compile", "__import__",
                         "getattr", "setattr", "delattr", "globals", "locals",
                         "vars", "dir", "breakpoint", "input", "exit", "quit",
-                        "help", "memoryview"}
+                        "help", "memoryview", "license", "copyright", "credits"}
 ATTRS_INTERDITS = {
     "environ", "getenv", "listdir", "getcwd", "chdir", "remove", "rmdir",
-    "mkdir", "makedirs", "system", "popen",
+    "mkdir", "makedirs", "system", "popen", "open", "file", "FileIO",
+    "DataSource", "get_handle", "urlopen", "urlretrieve", "HDFStore",
+    "format", "format_map",
     "read_csv", "read_table", "read_excel", "read_json", "read_sql",
     "read_parquet", "read_pickle", "read_hdf", "read_feather", "read_orc",
     "read_sas", "read_html",
@@ -82,6 +84,7 @@ ATTRS_INTERDITS = {
 
 MAX_LOG = 20000  # caractères max du journal capturé
 MAX_FIGURES = 6  # graphiques max renvoyés
+TAILLE_MAX_SORTIE = 8_000_000  # octets max du pickle de sortie (anti-DoS)
 
 
 def _motif_interdit(code):
@@ -127,13 +130,27 @@ def env_minimal(tmp):
     return env
 
 
+def _masquer_cle(texte):
+    """Remplace la vraie clé API par [clé API] si elle apparaît dans un texte."""
+    try:
+        cle = _lire_cle()
+    except Exception:
+        cle = ""
+    if cle and len(cle) >= 8 and texte:
+        return str(texte).replace(cle, "[clé API]")
+    return texte or ""
+
+
 def _nettoyer_erreur(texte):
     """Masque chemins et secrets éventuels dans un message d'erreur."""
-    propre = str(texte or "")
+    propre = _masquer_cle(str(texte or ""))
     propre = re.sub(r"[A-Za-z]:\\[^\s'\"`]*", "[chemin]", propre)
-    propre = re.sub(r"/(?:tmp|home|app|etc|var|Users)[^\s'\"`]*",
+    propre = re.sub(r"/(?:tmp|home|app|etc|var|Users|data|mnt|opt)[^\s'\"`]*",
                     "[chemin]", propre)
+    propre = re.sub(r"\\\\[^\s'\"`]+", "[chemin]", propre)
     propre = re.sub(r"LLM_[A-Za-z0-9_]+", "[secret?]", propre)
+    propre = re.sub(r"(?i)\b(?:password|passwd|private[ _-]?key)\b\s*[:=]?\s*"
+                    r"[^\s'\"`]+", "[secret?]", propre)
     propre = re.sub(r"\b[A-Za-z0-9_\-]{20,}\b", "[secret?]", propre)
     return propre
 
@@ -452,12 +469,15 @@ def executer(df, code):
             brut = detail[-1][:300] if detail else "échec du sous-processus"
             echec["erreur"] = _nettoyer_erreur(brut)
             return echec
+        if os.path.getsize(sortie) > TAILLE_MAX_SORTIE:
+            echec["erreur"] = "résultat trop volumineux (max 8 Mo)"
+            return echec
         with open(sortie, "rb") as f:
             run = pickle.load(f)
     for cle in ("log", "result", "figures", "df_clean", "rapport"):
         run.setdefault(cle, None if cle in ("result", "df_clean", "rapport") else ([] if cle == "figures" else ""))
     if isinstance(run.get("log"), str):
-        run["log"] = run["log"][:MAX_LOG]
+        run["log"] = _masquer_cle(run["log"])[:MAX_LOG]
     if isinstance(run.get("figures"), list):
         run["figures"] = run["figures"][:MAX_FIGURES]
     if run.get("erreur"):

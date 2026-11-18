@@ -123,6 +123,12 @@ def telecharger_fichier(url, timeout=20, limite=LIMITE_FICHIER):
         raise ValueError("URL de fichier invalide")
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as rep:
+        # Une redirection (http -> file://, ftp://) ne doit jamais donner
+        # accès au disque local : on revérifie l'URL finale (les vraies
+        # réponses ont toujours geturl ; repli sur l'URL demandée sinon).
+        finale = rep.geturl() if hasattr(rep, "geturl") else url
+        if not finale.startswith(("http://", "https://")):
+            raise ValueError("URL de fichier invalide (redirection refusée)")
         morceaux, total = [], 0
         while True:
             bloc = rep.read(65536)

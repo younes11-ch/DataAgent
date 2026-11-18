@@ -1,5 +1,16 @@
 # Note de reprise — DataAgent (hackathon Meta)
 
+## Où on en est (18 nov — correctifs sécurité APPLIQUÉS, re-déploiement OK)
+- ✅ Audit sandbox du 18 nov : lecture de fichiers prouvée via
+  `pd.io.common.get_handle` (vol de clé API possible via le log),
+  contournement `str.format` + dunders, pickle de sortie illimité, redirection
+  `file://` au téléchargement → TOUS CORRIGÉS + 11 tests
+  (`tests/test_securite_correctifs.py`). Suite : 133 verts.
+- ✅ Reste connu : test `recherche` budget flaky (pré-existant), pas de
+  rate-limiting ni d'échantillonnage gros fichiers (plafonds 8 Mo sortie /
+  50 Mo upload ajoutés), `test_agent.py` complet non relancé (clé requise).
+- ⏸️ Re-déploiement toujours à faire (repo + push + Cloud, suis DEPLOIEMENT.md).
+
 ## Où on en est (2 nov — DÉPUBLIÉ, pause déploiement, travail en local)
 - ⏸️ Repo GitHub supprimé à la demande (vérifié, 0 repo public). Tout est intact
   sur le PC : code + historique git local (4 commits). Le remote `origin` pointe

@@ -4,6 +4,7 @@ import io
 import json
 import math
 import os
+import time
 
 import pandas as pd
 import streamlit as st
@@ -22,14 +23,22 @@ def _charger_secrets():
 
 _charger_secrets()
 
+import anomalies
 import comparer
 import data_agent
 import export_pdf
 import imputation
+import journal
 import points_aberrants
 import prediction
+import profiler
 import rapport
 import scan
+import series
+import stats_tests
+import ui_anim
+import verif
+import viz
 import voix
 from scan import pct
 
@@ -93,6 +102,9 @@ section[data-testid="stSidebar"] h2 { font-size: 1.1rem; }
   * { animation: none !important; transition: none !important; } }
 </style>
 """, unsafe_allow_html=True)
+st.markdown(ui_anim.CSS_UPLOAD, unsafe_allow_html=True)
+st.markdown(ui_anim.CSS_PIPELINE, unsafe_allow_html=True)
+st.markdown(ui_anim.CSS_TYPING, unsafe_allow_html=True)
 
 
 if not data_agent.cle_api_disponible():
@@ -128,8 +140,11 @@ for cle, defaut in [("identifiant", None), ("nom", ""), ("brut", None),
                     ("ambigues", []), ("nettoyage", None), ("version", ""),
                     ("cible", None), ("scan_res", None), ("hypotheses", []),
                     ("historique", []), ("a_poser", None), ("pred", None),
-                    ("tests_res", None), ("dedup_applique", None),
-                    ("base_nettoyee", None), ("journal", []), ("annule", False),
+                    ("tests_res", None), ("stat_res", None),
+                    ("serie_res", None),
+                    ("dedup_applique", None),
+                    ("base_nettoyee", None), ("journal", []), ("journal_details", []),
+                    ("script_nettoyage", None), ("annule", False),
                     ("strategie_appliquee", None), ("det_aberrantes", None),
                     ("resume_exec", None), ("rapport_cache", None),
                     ("csv_cache", None)]:
@@ -194,7 +209,8 @@ def reconstruire():
     st.session_state.nettoyage = {
         "rapport": nettoyage["rapport"], "fichier": nom,
         "avant": {"lignes": lignes_avant, "manquantes": manq_avant},
-        "doublons": nettoyage["doublons"], "nettoye": nettoyage["nettoye"]}
+        "doublons": nettoyage["doublons"], "nettoye": nettoyage["nettoye"],
+        "code": nettoyage.get("code", "")}
     doublons_n = nettoyage["doublons"]["n"]
     if nettoyage["nettoye"]:
         suffixe = (f" (doublons supprimés)" if dedup and doublons_n else
@@ -227,8 +243,44 @@ def finaliser():
     st.session_state.journal = (
         list((st.session_state.nettoyage or {}).get("rapport", []))
         + imp["journal"])
+    st.session_state.journal_details = (
+        journal.entrees_nettoyage(st.session_state.nettoyage,
+                                  bool(st.session_state.get("dedup", True)))
+        + list(imp.get("details", [])))
+    st.session_state.script_nettoyage = journal.exporter_script(
+        (st.session_state.nettoyage or {}).get("code", ""),
+        imp.get("remplissages", {}), strat,
+        st.session_state.nom or "donnees.csv")
     _rafraichir_analyse(df)
     st.session_state.strategie_appliquee = strat
+
+
+def _appliquer_decision_aberrantes():
+    """Applique garder / corriger / supprimer sur les anomalies détectées (§3).
+
+    Met à jour données + journal + script reproductible, puis recalcule
+    profil/scan/hypothèses (les anciennes réponses du chat sont invalidées).
+    """
+    det = st.session_state.det_aberrantes or {}
+    col = det.get("colonne")
+    df = st.session_state.df
+    if not col or df is None or col not in df.columns:
+        return
+    choix = st.session_state.get("ab_decision", "garder")
+    idx_labels = list(det.get("index") or [])
+    res = anomalies.appliquer_decision(df, col, choix, index=idx_labels)
+    st.session_state.journal = (list(st.session_state.journal or [])
+                                + [res["entree"]["justification"]])
+    st.session_state.journal_details = (
+        list(st.session_state.get("journal_details") or []) + [res["entree"]])
+    if choix != "garder" and st.session_state.get("script_nettoyage"):
+        st.session_state.script_nettoyage += (
+            "\n" + anomalies.code_rejeu(col, choix, idx_labels,
+                                        valeur=res.get("valeur")) + "\n")
+    st.session_state.df = res["df"]
+    st.session_state.det_aberrantes = None
+    _rafraichir_analyse(res["df"])
+    st.rerun()
 
 
 def annuler_nettoyage():
@@ -237,6 +289,8 @@ def annuler_nettoyage():
     st.session_state.df = brut.copy()
     st.session_state.version = "d'origine (nettoyage annulé)"
     st.session_state.journal = ["Nettoyage annulé : données d'origine restaurées."]
+    st.session_state.journal_details = []
+    st.session_state.script_nettoyage = None
     st.session_state.annule = True
     _rafraichir_analyse(brut)
 
@@ -271,6 +325,8 @@ def _rafraichir_analyse(df):
     st.session_state.historique = []
     st.session_state.pred = None
     st.session_state.tests_res = None
+    st.session_state.stat_res = None
+    st.session_state.serie_res = None
     st.session_state.det_aberrantes = None
     st.session_state.resume_exec = None
     st.session_state.rapport_cache = None
@@ -375,6 +431,45 @@ def afficher_audit(resultat):
         st.warning("Points non vérifiés : " + "; ".join(points[:5]))
 
 
+def bloc_reverification(echange, cle):
+    """Bouton « Revérifier » : relance le code pandas en sandbox, compare les chiffres.
+
+    Le résultat est stocké dans echange["reverification"] pour survivre au rerun.
+    Sans code (réponse directe) ou sans données : simple message, pas de bouton.
+    """
+    ag = echange.get("agents") or {}
+    code = (ag.get("code") or "").strip()
+    if not code:
+        st.caption("Pas de code à revérifier ici (réponse directe, sans calcul).")
+        return
+    if st.session_state.df is None:
+        st.caption("Charge un fichier pour revérifier ce calcul.")
+        return
+    if st.button("Revérifier", key=f"reverif-{cle}",
+                 help="Relance le même code pandas dans un calcul indépendant."):
+        with st.spinner("Revérification en cours…"):
+            second = verif.reverifier(st.session_state.df, code)
+        if not second.get("ok"):
+            echange["reverification"] = (
+                "⚠ Revérification impossible : "
+                + (second.get("erreur") or "échec du calcul."))
+        else:
+            avant = data_agent.extraire_nombres(ag.get("log") or "")
+            comp = verif.comparer_nombres(avant, second.get("nombres") or [])
+            echange["reverification"] = verif.formater_verdict(comp)
+    if echange.get("reverification"):
+        st.info(echange["reverification"])
+
+
+def _diffuser(texte):
+    """Affiche la réponse progressivement (3 mots / 25 ms, texte intact)."""
+    def _paquets():
+        for morceau in ui_anim.decouper_stream(texte or ""):
+            yield morceau
+            time.sleep(0.025)
+    st.write_stream(_paquets())
+
+
 def afficher_lecture(reponse, cle):
     """Bouton haut-parleur sous une réponse (si lecture activée)."""
     if st.session_state.get("lecture_vocale"):
@@ -405,18 +500,24 @@ def afficher_echange(echange, idx):
             st.write("**Planificateur** : " + ag.get("plan", ""))
             st.write("**Codeur** : " + ag.get("explication", ""))
             st.code(ag.get("code", ""), language="python")
+            if ag.get("log"):
+                st.write("**Résultat brut (sortie du code exécuté)** :")
+                st.text(str(ag.get("log"))[:2000])
             if echange.get("tableau") is not None:
                 st.write("**Tableau brut du résultat** :")
                 st.dataframe(echange["tableau"])
             st.write("**Vérificateur** : " + ag.get("verdict", ""))
             if ag.get("audit"):
                 st.write("**Audit** : " + ag.get("audit", ""))
+            bloc_reverification(echange, idx)
 
 
 def traiter_recherche(question):
     """Recherche sans fichier : agents web + audit, sources affichées."""
     st.chat_message("user").write(question)
     with st.chat_message("assistant"):
+        attente = st.empty()
+        attente.markdown(ui_anim.INDICATEUR_FRAPPE, unsafe_allow_html=True)
         with st.status("Recherche en cours…", expanded=True) as statut:
             try:
                 resultat = data_agent.analyser_sans_upload(
@@ -428,9 +529,11 @@ def traiter_recherche(question):
             except Exception:
                 statut.update(label="Erreur pendant la recherche",
                               state="error")
+                attente.empty()
                 st.error("Oups, une erreur est arrivée. Essaie de reformuler ta question.")
                 return
-        st.write(resultat["reponse"] or "Recherche terminée.")
+        attente.empty()
+        _diffuser(resultat["reponse"] or "Recherche terminée.")
         afficher_audit(resultat)
         afficher_sources(resultat.get("sources") or [])
         boutons_charger(resultat.get("sources") or [],
@@ -450,6 +553,8 @@ def traiter_question(question):
     """Fait travailler les agents avec suivi en direct, réponse vérifiée."""
     st.chat_message("user").write(question)
     with st.chat_message("assistant"):
+        attente = st.empty()
+        attente.markdown(ui_anim.INDICATEUR_FRAPPE, unsafe_allow_html=True)
         with st.status("Les agents travaillent…", expanded=True) as statut:
             try:
                 resultat = data_agent.analyser_question(
@@ -461,9 +566,11 @@ def traiter_question(question):
                 statut.update(label="Analyse terminée !", state="complete")
             except Exception:
                 statut.update(label="Erreur pendant l'analyse", state="error")
+                attente.empty()
                 st.error("Oups, une erreur est arrivée. Essaie de reformuler ta question.")
                 return
-        st.write(resultat["reponse"] or "Analyse terminée.")
+        attente.empty()
+        _diffuser(resultat["reponse"] or "Analyse terminée.")
         if resultat["tableau"] is not None:
             st.dataframe(resultat["tableau"])
         if st.session_state.get("voir_graph", True):
@@ -478,6 +585,9 @@ def traiter_question(question):
             st.write("**Planificateur** : " + ag.get("plan", ""))
             st.write("**Codeur** : " + ag.get("explication", ""))
             st.code(ag.get("code", ""), language="python")
+            if ag.get("log"):
+                st.write("**Résultat brut (sortie du code exécuté)** :")
+                st.text(str(ag.get("log"))[:2000])
             if resultat["tableau"] is not None:
                 st.write("**Tableau brut du résultat** :")
                 st.dataframe(resultat["tableau"])
@@ -496,6 +606,7 @@ def traiter_question(question):
          "confiance": resultat.get("confiance"),
          "points_non_verifies": resultat.get("points_non_verifies") or [],
          "verdict": resultat.get("verdict")})
+    st.rerun()
 
 
 def verifier_test(test, reponse):
@@ -559,8 +670,13 @@ st.caption("Dictée en français : parle, la transcription s'affiche "
 fichier = st.file_uploader("Envoie ton fichier de données (CSV ou Excel, même sale)",
                             type=["csv", "xlsx", "xls"])
 
+TAILLE_MAX_UPLOAD = 50_000_000  # 50 Mo : au-delà, le serveur partagé ramerait
+
 if fichier is not None:
     contenu = fichier.getvalue()
+    if len(contenu) > TAILLE_MAX_UPLOAD:
+        st.error("Fichier trop volumineux (max 50 Mo) : envoie un extrait.")
+        st.stop()
     identifiant = (fichier.name, len(contenu))
     if st.session_state.identifiant != identifiant:
         try:
@@ -577,6 +693,8 @@ if fichier is not None:
         st.session_state.df = None
 
     brut = st.session_state.brut
+    st.markdown(ui_anim.carte_succes(fichier.name, len(brut), len(brut.columns)),
+                unsafe_allow_html=True)
     doublons_n = int(brut.duplicated().sum())
     if doublons_n:
         st.warning(f"⚠ {doublons_n} doublons exacts détectés "
@@ -635,11 +753,19 @@ if st.session_state.df is not None:
     r = st.session_state.resume or {}
     net = st.session_state.nettoyage or {}
     st.caption(f"Version analysée : {st.session_state.version}.")
+    st.markdown(ui_anim.pipeline_fichier(
+        st.session_state.brut, st.session_state.profil,
+        st.session_state.nettoyage, st.session_state.scan_res,
+        st.session_state.cible, st.session_state.historique,
+        st.session_state.get("rapport_cache"), df),
+        unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Lignes", len(df))
-    c2.metric("Colonnes", len(df.columns))
-    c3.metric("Valeurs manquantes", int(df.isna().sum().sum()))
+    brut_q = st.session_state.brut
+    score_avant = profiler.score_qualite(brut_q if brut_q is not None else df)["score"]
+    n_anomalies = len((st.session_state.scan_res or {}).get("observations", []))
+    components.html(ui_anim.bandeau_chiffres(
+        len(df), len(df.columns), int(df.isna().sum().sum()), n_anomalies,
+        score_avant, profiler.score_qualite(df)["score"]), height=180)
 
     if net.get("rapport"):
         avant = net.get("avant", {})
@@ -656,6 +782,19 @@ if st.session_state.df is not None:
         with st.expander("Journal du nettoyage"):
             for ligne in st.session_state.journal:
                 st.write("- " + ligne)
+            details = st.session_state.get("journal_details") or []
+            if details:
+                st.write("**Détail par transformation** :")
+                st.dataframe(pd.DataFrame([{
+                    "Colonne": d.get("colonne") or "—",
+                    "Action": d.get("action"),
+                    "Lignes": (d.get("lignes") if d.get("lignes") is not None
+                               else "—"),
+                    "Justification": d.get("justification")} for d in details]))
+    if st.session_state.get("script_nettoyage"):
+        st.download_button("Télécharger le script reproductible (.py)",
+                           st.session_state.script_nettoyage.encode("utf-8"),
+                           "script_nettoyage.py", "text/x-python")
 
     with st.expander("Hypothèses et limites"):
         for h in st.session_state.hypotheses:
@@ -689,15 +828,25 @@ if st.session_state.df is not None:
     if not nums_ab:
         st.info("Pas de colonne numérique : impossible de chercher des valeurs aberrantes.")
     else:
+        libelles_ab = {anomalies.METHODE_COMBINEE: anomalies.LIBELLE_COMBINEE,
+                       **points_aberrants.LIBELLES}
         col_ab, met_ab = st.columns(2)
         col_ab.selectbox("Colonne à examiner", nums_ab, key="ab_colonne")
-        met_ab.radio("Méthode de détection", list(points_aberrants.LIBELLES),
-                     format_func=lambda k: points_aberrants.LIBELLES[k],
+        met_ab.radio("Méthode de détection", list(libelles_ab),
+                     format_func=lambda k: libelles_ab[k],
                      key="ab_methode")
         if st.button("Détecter les valeurs aberrantes"):
             with st.spinner("Détection en cours…"):
-                st.session_state.det_aberrantes = points_aberrants.analyser(
-                    df, st.session_state.ab_colonne, st.session_state.ab_methode)
+                col = st.session_state.ab_colonne
+                met = st.session_state.ab_methode
+                if met == anomalies.METHODE_COMBINEE:
+                    det = anomalies.resumer(df, col)
+                else:
+                    det = points_aberrants.analyser(df, col, met)
+                    det["index"] = list(
+                        df.index[points_aberrants.detecter(df[col], met)])
+                det["colonne"], det["methode"] = col, met
+                st.session_state.det_aberrantes = det
         det = st.session_state.det_aberrantes
         if det:
             st.write(det["explication"])
@@ -707,6 +856,16 @@ if st.session_state.df is not None:
                 st.image(det["figure"], width=640)
                 st.download_button("Télécharger le graphique", det["figure"],
                                    "aberrantes.png", "image/png")
+            if det.get("n", 0) > 0 and det.get("colonne") in df.columns:
+                st.radio("Que faire de ces valeurs ?",
+                         ["garder", "corriger", "supprimer"],
+                         format_func=lambda k: {
+                             "garder": "Garder (les conserver telles quelles)",
+                             "corriger": "Corriger (remplacer par la médiane)",
+                             "supprimer": "Supprimer (retirer les lignes)"}[k],
+                         key="ab_decision")
+                if st.button("Appliquer la décision"):
+                    _appliquer_decision_aberrantes()
 
     questions = r.get("questions") or questions_secours(st.session_state.profil)
     if questions:
@@ -849,6 +1008,94 @@ if st.session_state.df is not None:
         for t in st.session_state.tests_res:
             st.write(("✅ " if t["ok"] else "❌ ") + t["question"])
 
+    st.divider()
+    st.subheader("8 · Tests statistiques")
+    st.write("Le module choisit le bon test selon tes colonnes, vérifie "
+             "les hypothèses et explique la p-value simplement.")
+    cst1, cst2 = st.columns(2)
+    cst1.selectbox("Colonne 1", list(df.columns), key="st_col1")
+    cst2.selectbox("Colonne 2 (optionnelle)", ["—"] + list(df.columns),
+                   key="st_col2")
+    st.selectbox("Test", list(stats_tests.TESTS),
+                 format_func=lambda k: stats_tests.TESTS[k], key="st_test")
+    if st.button("Lancer le test statistique"):
+        col2 = (None if st.session_state.st_col2 == "—"
+                else st.session_state.st_col2)
+        st.session_state.stat_res = stats_tests.lancer(
+            df, st.session_state.st_test, st.session_state.st_col1, col2)
+    sres = st.session_state.get("stat_res")
+    if sres:
+        if not sres.get("ok"):
+            st.warning(sres.get("erreur") or "Test impossible.")
+        else:
+            st.write("**" + sres["libelle"] + f"** (n={sres['n']})")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Statistique", f"{sres['statistique']:.3f}")
+            m2.metric("p-value", "p < 0,001" if sres["p"] < 0.001
+                      else f"{sres['p']:.3f}".replace(".", ","))
+            m3.metric(sres["effet_nom"], f"{sres['effet']:.2f}")
+            st.write(sres["explication"])
+            for h in sres.get("hypotheses") or []:
+                st.caption("- " + h)
+            for d in sres.get("details") or []:
+                st.caption("- " + d)
+
+    st.divider()
+    st.subheader("9 · Visualisations")
+    st.write("Choisis X (et Y en option) : le graphique adapté s'affiche "
+             "avec sa phrase d'insight.")
+    cvx, cvy = st.columns(2)
+    cvx.selectbox("Axe X", list(df.columns), key="viz_x")
+    cvy.selectbox("Axe Y (optionnel)", ["—"] + list(df.columns), key="viz_y")
+    st.selectbox("Type de graphique", list(viz.LIBELLES),
+                 format_func=lambda k: viz.LIBELLES[k], key="viz_kind")
+    try:
+        vx = st.session_state.get("viz_x")
+        vy = st.session_state.get("viz_y")
+        force = (None if st.session_state.get("viz_kind", "auto") == "auto"
+                 else st.session_state.get("viz_kind"))
+        choix_viz = viz.choisir(df, vx, None if vy == "—" else vy, force)
+        st.plotly_chart(viz.construire(df, choix_viz["kind"],
+                                       choix_viz["col_x"], choix_viz["col_y"]),
+                        use_container_width=True)
+        st.write(viz.insight(df, choix_viz["kind"],
+                             choix_viz["col_x"], choix_viz["col_y"]))
+        st.caption("Choix auto : " + choix_viz["raison"] + ".")
+    except Exception as e:
+        st.warning(f"Graphique impossible : {e}.")
+
+    st.divider()
+    st.subheader("10 · Séries temporelles")
+    dates_sr = series.colonnes_dates(df)
+    nums_sr = list(df.select_dtypes(include="number").columns)
+    if not dates_sr:
+        st.info("Aucune colonne de dates détectée : impossible d'analyser "
+                "une série temporelle.")
+    elif not nums_sr:
+        st.info("Aucune colonne de nombres à prévoir.")
+    else:
+        csd, csv_ = st.columns(2)
+        csd.selectbox("Colonne de dates", dates_sr, key="sr_date")
+        csv_.selectbox("Valeur à prévoir", nums_sr, key="sr_val")
+        st.slider("Horizon de prévision", 3, 30, 7, key="sr_horizon")
+        if st.button("Analyser la série"):
+            st.session_state.serie_res = series.analyser(
+                df, st.session_state.sr_date, st.session_state.sr_val,
+                st.session_state.sr_horizon)
+        sr = st.session_state.get("serie_res")
+        if sr:
+            if not sr.get("ok"):
+                st.warning(sr.get("erreur") or "Analyse impossible.")
+            else:
+                t1, t2, t3 = st.columns(3)
+                t1.metric("Tendance", sr["tendance"]["direction"])
+                t2.metric("Saisonnalité",
+                          f"cycle {sr['saison']['periode']}"
+                          if sr["saison"] else "non détectée")
+                t3.metric("Méthode", sr["methode"])
+                st.plotly_chart(sr["figure"], use_container_width=True)
+                st.write(sr["explication"])
+
     if st.session_state.historique:
         st.divider()
         discussion = "# Rapport DataAgent\n\n"
@@ -859,7 +1106,9 @@ if st.session_state.df is not None:
     if st.button("Tout recommencer"):
         for cle in ["identifiant", "nom", "brut", "df", "profil", "resume",
                     "nettoyage", "version", "cible", "scan_res", "a_poser",
-                    "pred", "tests_res", "dedup_applique", "base_nettoyee",
+                    "pred", "tests_res", "stat_res", "serie_res",
+                    "dedup_applique",
+                    "base_nettoyee",
                     "strategie_appliquee", "det_aberrantes", "resume_exec",
                     "rapport_cache", "csv_cache"]:
             st.session_state[cle] = None
@@ -867,6 +1116,8 @@ if st.session_state.df is not None:
         st.session_state.nom = ""
         st.session_state.ambigues = []
         st.session_state.journal = []
+        st.session_state.journal_details = []
+        st.session_state.script_nettoyage = None
         st.session_state.annule = False
         st.session_state.hypotheses = []
         st.session_state.historique = []

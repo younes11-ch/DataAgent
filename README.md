@@ -81,6 +81,14 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 - `scan.py` — scan déterministe des anomalies
 - `imputation.py` — imputation choisie par l'utilisateur (déterministe)
 - `points_aberrants.py` — IQR / Z-score / Isolation Forest + graphique
+- `anomalies.py` — vote 2/3 des 3 méthodes + garder/corriger/supprimer
+- `verif.py` — revérification indépendante des chiffres (bouton Revérifier)
+- `journal.py` — journal structuré + script Python reproductible
+- `profiler.py` — score de qualité des données 0-100 (avant/après)
+- `stats_tests.py` — t-test, ANOVA, chi², corrélation + explications simples
+- `viz.py` — graphiques Plotly auto + phrase d'insight
+- `series.py` — tendance, saisonnalité, prévision Holt-Winters
+- `ui_anim.py` — animations CSS pures (upload, pipeline, compteurs, jauge)
 - `export_pdf.py` — rapport PDF en un clic
 - `tests/` — tests pytest des nouveautés (sans clé API)
 - `rapport.py` — rapport HTML en un clic
@@ -89,3 +97,25 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 - `test_agent.py` — test complet du projet
 - `ventes_exemple.csv`, `ventes_sales.csv` — fichiers d'exemple
 - `.env` — ta clé API (secret, ne jamais partager ni publier)
+
+## Architecture des agents
+
+Pipeline : **Profiler** (`profile_data`) → **Nettoyeur** (`nettoyer_donnees` +
+`imputation`, journal structuré via `journal.py`) → **Détecteur**
+(`scan.py` + consensus `anomalies.py`) → **Analyste** (`planifier` → `coder` →
+`executer` en sandbox → `vérifier` → `rédiger`, bouton Revérifier via
+`verif.py`) → **Rapport** (`rapport.py`, `export_pdf.py`). Règle d'or : le LLM
+n'affiche que des chiffres recalculés en pandas dans le sandbox.
+
+## Scénario de démo (2 minutes, jury)
+
+1. **0h00 — Upload** : dépose `ventes_sales.csv` (sale) → carte de succès +
+   pipeline qui s'anime (Profiler ✓, Nettoyeur ✓, Détecteur ✓).
+2. **0h30 — Qualité** : compteurs animés + jauge avant → après nettoyage.
+3. **0h50 — Anomalies** : §3, méthode Consensus → corriger/supprimer →
+   journal et chiffres mis à jour.
+4. **1h10 — Question vérifiée** : « quel est le total par ville ? » → réponse
+   + « Voir le code » (code pandas + résultat brut) → bouton **Revérifier**.
+5. **1h40 — Reproductible** : journal détaillé + téléchargement du script
+   `.py` qui rejoue tout.
+6. **1h55 — Rapport** : résumé exécutif + export HTML/PDF en un clic.
