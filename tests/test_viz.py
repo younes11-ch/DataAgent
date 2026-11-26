@@ -59,6 +59,24 @@ def test_insight_chiffre_en_francais():
     assert "hausse" in ligne or "baisse" in ligne
 
 
+def test_histogramme_date_compte_par_jour():
+    # La capture du bug : 2 lignes sur 3 jours donnaient un seul bloc
+    # bleu illisible. On exige une barre par jour distinct.
+    df_dates = pd.DataFrame({
+        "date": ["2026-09-04 18:00", "2026-09-05 09:00",
+                 "2026-09-05 18:00", "2026-09-06 12:00"],
+    })
+    choix = viz.choisir(df_dates, "date")
+    fig = viz.construire(df_dates, choix["kind"], choix["col_x"],
+                         choix["col_y"])
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
+    assert len(fig.data[0].x) == 3  # un point par jour, pas un bloc unique
+    assert "par jour" in (fig.layout.title.text or "")
+    phrase = viz.insight(df_dates, choix["kind"], choix["col_x"])
+    assert "pic le" in phrase and "05/09/2026" in phrase
+
+
 def test_est_date():
     assert viz.est_date(df["date"])
     assert not viz.est_date(df["ville"])

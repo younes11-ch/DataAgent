@@ -146,6 +146,19 @@ def construire(df: pd.DataFrame, kind: str, col_x: str | None,
         vals = df[col_x].dropna()
         if vals.empty:
             raise ValueError(f"« {col_x} » est vide")
+        if type_colonne(df[col_x]) == "date":
+            # Une date seule n'a pas de « distribution » : on compte les
+            # lignes par jour (un histogramme brut des timestamps
+            # n'affichait qu'un seul bloc illisible).
+            jours = _en_dates(df[col_x]).dropna().dt.floor("D")
+            if jours.empty:
+                raise ValueError(
+                    f"« {col_x} » ne contient aucune date exploitable")
+            par_jour = jours.value_counts().sort_index()
+            fig = px.bar(x=par_jour.index, y=par_jour.values,
+                         labels={"x": col_x, "y": "Nombre de lignes"},
+                         title=f"Nombre de lignes par jour (« {col_x} »)")
+            return _base(fig, f"Nombre de lignes par jour (« {col_x} »)")
         fig = px.histogram(df, x=col_x, nbins=20,
                            title=f"Distribution de « {col_x} »")
         return _base(fig, f"Distribution de « {col_x} »")
@@ -218,6 +231,12 @@ def insight(df: pd.DataFrame, kind: str, col_x: str | None,
     vals = df[col_x]
     n = int(vals.count())
     if kind == "histogramme":
+        if type_colonne(vals) == "date":
+            jours = _en_dates(vals).dropna().dt.floor("D")
+            pic = jours.value_counts()
+            return (f"« {col_x} » (n={_f(n)}) : pic le "
+                    f"{pic.index[0].strftime('%d/%m/%Y')} "
+                    f"({_f(int(pic.iloc[0]))} lignes).")
         if _est_nombre(vals):
             v = pd.to_numeric(vals, errors="coerce").dropna()
             return (f"« {col_x} » (n={_f(n)}) : médiane {_f(float(v.median()))}, "

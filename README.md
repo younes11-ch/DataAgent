@@ -11,7 +11,7 @@ Projet pour le **Meta Global AI Developer Hackathon** (track Indie, thème
 
 ## Démo en ligne
 
-▶ **Ouvre l'app : https://dataagent-kgek78zhmuddpdrthh7vdh.streamlit.app/**
+▶ **Ouvre l'app : https://dataagent-vj7dl7bda3ttcisrjc86tn.streamlit.app/**
 
 Pas de clé API sous la main ? L'app démarre en **mode démo** : scan,
 statistiques, valeurs aberrantes, comparaison et rapports fonctionnent
@@ -96,6 +96,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 - `tests.json` — questions des tests intégrés (cibles Employee.csv)
 - `test_agent.py` — test complet du projet
 - `ventes_exemple.csv`, `ventes_sales.csv` — fichiers d'exemple
+- `ventes_anomalies.csv` — exemple piégé (anomalies réelles + manquantes)
 - `.env` — ta clé API (secret, ne jamais partager ni publier)
 
 ## Architecture des agents

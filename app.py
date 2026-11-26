@@ -62,39 +62,52 @@ st.markdown("""
 <style>
 @keyframes entree { from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; } }
-.block-container { animation: entree .45s ease-out; }
+.block-container { animation: entree .45s ease-out; max-width: 72rem; }
 div[data-testid="stDecoration"] { background: #0f766e; }
+section[data-testid="stAppViewContainer"] { background: #f6f9f8; }
 .block-container h1 { letter-spacing: -0.02em; }
-.block-container h2, .block-container h3 { color: #111827; letter-spacing: -0.01em; }
+.block-container h2, .block-container h3 { color: #0f172a; letter-spacing: -0.01em;
+  font-weight: 700; }
 div.stButton > button, div.stDownloadButton > button {
   border-radius: 999px; font-weight: 600;
   transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
-div.stButton > button { border: 1.5px solid #0f766e; color: #0f766e; background: #fff; }
+div.stButton > button { border: 1.5px solid #0f766e; color: #0f766e; background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .08); }
 div.stButton > button:hover { background: #0f766e; color: #fff; }
 div.stButton > button:active { background: #115e59; border-color: #115e59; color: #fff; }
-div.stDownloadButton > button { background: #0f766e; border: 1.5px solid #0f766e; color: #fff; }
+div.stButton > button[kind="primary"] { background: #0f766e; color: #fff; }
+div.stButton > button[kind="primary"]:hover { background: #115e59; }
+div.stDownloadButton > button { background: #0f766e; border: 1.5px solid #0f766e; color: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .08); }
 div.stDownloadButton > button:hover { background: #115e59; border-color: #115e59; }
-div[data-testid="stChatMessage"] { border-radius: 14px; border: 1px solid #e5e7eb; }
+div[data-testid="stChatMessage"] { border-radius: 14px; border: 1px solid #e2e8f0;
+  background: #fff; box-shadow: 0 1px 3px rgba(15, 23, 42, .05); }
 div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {
   background: #f0fdf9; }
-div[data-testid="stMetric"] { background: #fff; border: 1px solid #e5e7eb;
-  border-radius: 12px; padding: 12px 16px; }
+div[data-testid="stMetric"] { background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 14px; padding: 14px 18px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
 div[data-testid="stMetricValue"] { color: #0f766e; }
-div[data-testid="stExpander"] { border-radius: 10px; }
+div[data-testid="stExpander"] { border-radius: 12px; background: #fff;
+  border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(15, 23, 42, .05); }
+div[data-testid="stDataFrame"] { border: 1px solid #e2e8f0; border-radius: 12px;
+  background: #fff; box-shadow: 0 1px 3px rgba(15, 23, 42, .05); }
 section[data-testid="stSidebar"] h2 { font-size: 1.1rem; }
-.hero { background: #0f766e; border-radius: 12px; padding: 22px 26px;
-  margin-bottom: 1.2rem; }
-.hero-titre { color: #fff; font-size: 1.9rem; font-weight: 700;
+.hero { background: #fff; border: 1px solid #e2e8f0; border-top: 4px solid #0f766e;
+  border-radius: 14px; padding: 20px 24px; margin-bottom: 1.2rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
+.hero-titre { color: #0f172a; font-size: 1.9rem; font-weight: 700;
   letter-spacing: -0.02em; line-height: 1.1; }
-.hero-sous { color: #d7efea; font-size: 1rem; margin-top: 8px; max-width: 62em; }
+.hero-sous { color: #475569; font-size: 1rem; margin-top: 8px; max-width: 62em; }
 .barre-nettoyage { background: #f0fdf9; border: 1px solid #ccfbf1;
   border-radius: 12px; padding: 12px 18px; margin: 0.6rem 0 1rem 0; }
 .badges { margin-top: 12px; }
-.badge { display: inline-block; background: #fff; color: #0f766e;
-  border-radius: 999px; font-size: .82rem; font-weight: 600;
+.badge { display: inline-block; background: #f0fdf9; color: #0f766e;
+  border: 1px solid #ccfbf1; border-radius: 999px; font-size: .82rem; font-weight: 600;
   padding: 3px 12px; margin: 0 6px 6px 0; }
-.etape { background: #fff; border: 1.5px solid #0f766e; border-radius: 10px;
-  padding: 10px 14px; text-align: center; color: #111827; font-size: .92rem; }
+.etape { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 12px 14px; text-align: center; color: #0f172a; font-size: .92rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
 .etape strong { display: block; color: #0f766e; font-size: .95rem; }
 .carte-recherche { background: #f0fdf9; border: 1px solid #ccfbf1;
   border-radius: 12px; padding: 14px 18px; margin-bottom: 1rem; }

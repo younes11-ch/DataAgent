@@ -16,9 +16,10 @@ CSS_UPLOAD = """
 @keyframes da-entree { from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; } }
 div[data-testid="stFileUploaderDropzone"] {
-  border: 2px dashed #0f766e; border-radius: 14px;
+  border: 2px dashed #0f766e; border-radius: 14px; background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06);
   transition: transform .2s ease-out, border-color .2s ease-out,
-    background-color .2s ease-out; }
+    background-color .2s ease-out, box-shadow .2s ease-out; }
 div[data-testid="stFileUploaderDropzone"]:hover,
 div[data-testid="stFileUploaderDropzone"]:focus-within {
   transform: scale(1.01); border-color: #14b8a6; background: #f0fdf9; }
@@ -59,20 +60,26 @@ CSS_PIPELINE = """
 @keyframes da-pulse { 0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.12); opacity: .75; } }
 @keyframes da-flux { from { opacity: .35; } to { opacity: 1; } }
-.da-pipe { display: flex; align-items: flex-start; margin: .4rem 0 1rem 0; }
-.da-noeud { flex: 0 0 auto; width: 104px; text-align: center; }
-.da-pastille { width: 38px; height: 38px; margin: 0 auto; border-radius: 50%;
+.da-pipe { display: flex; align-items: flex-start; margin: .6rem 0 1.2rem 0;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
+  padding: 14px 16px; box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
+.da-noeud { flex: 0 0 auto; width: 118px; text-align: center;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px;
+  padding: 8px 6px 10px 6px; }
+.da-pastille { width: 34px; height: 34px; margin: 0 auto; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; background: #e5e7eb; color: #6b7280; }
-.da-nom { font-size: .78rem; font-weight: 600; color: #374151; margin-top: 4px; }
-.da-msg { font-size: .7rem; color: #6b7280; min-height: 2em; }
+  font-weight: 700; background: #e2e8f0; color: #64748b; }
+.da-nom { font-size: .78rem; font-weight: 700; color: #0f172a; margin-top: 4px; }
+.da-msg { font-size: .7rem; color: #64748b; min-height: 2em; }
+.da-noeud.fait { background: #f0fdf9; border-color: #99f6e4; }
 .da-noeud.fait .da-pastille { background: #0f766e; color: #fff; }
 .da-noeud.fait .da-msg { color: #0f766e; }
+.da-noeud.actif { background: #fff; border-color: #14b8a6; }
 .da-noeud.actif .da-pastille { background: #14b8a6; color: #fff;
   animation: da-pulse 1.2s ease-out infinite; }
 .da-noeud.actif .da-msg { color: #115e59; font-weight: 600; }
-.da-lien { flex: 1 1 auto; height: 3px; margin-top: 18px; border-radius: 2px;
-  background: #e5e7eb; }
+.da-lien { flex: 1 1 auto; height: 3px; margin-top: 30px; border-radius: 2px;
+  background: #e2e8f0; }
 .da-lien.plein { background: #0f766e; }
 .da-lien.cours { background: #14b8a6; animation: da-flux .8s ease-out infinite alternate; }
 </style>
@@ -178,12 +185,16 @@ def bandeau_chiffres(lignes: int, colonnes: int, manquantes: int,
     return f"""
 <style>
 @keyframes da-jauge {{ from {{ stroke-dashoffset: {CIRCONFERENCE_JAUGE}; }} }}
-.da-stats {{ display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+.da-stats {{ display: flex; align-items: stretch; gap: 14px; flex-wrap: wrap;
   font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }}
-.da-stat {{ min-width: 86px; }}
-.da-nombre {{ font-size: 1.6rem; font-weight: 700; color: #0f766e; }}
-.da-legende {{ font-size: .78rem; color: #6b7280; }}
-.da-jauge {{ display: flex; align-items: center; gap: 10px; }}
+.da-stat {{ min-width: 104px; background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 14px; padding: 10px 16px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }}
+.da-nombre {{ font-size: 1.6rem; font-weight: 700; color: #0f172a; }}
+.da-legende {{ font-size: .78rem; color: #64748b; }}
+.da-jauge {{ display: flex; align-items: center; gap: 10px; background: #fff;
+  border: 1px solid #e2e8f0; border-radius: 14px; padding: 10px 16px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }}
 .da-anneau {{ transform: rotate(-90deg); transform-origin: center; }}
 .da-anneau .fond {{ fill: none; stroke: #e5e7eb; stroke-width: 11; }}
 .da-anneau .val {{ fill: none; stroke: #0f766e; stroke-width: 11;
