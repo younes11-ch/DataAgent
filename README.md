@@ -11,7 +11,7 @@ Projet pour le **Meta Global AI Developer Hackathon** (track Indie, thème
 
 ## Démo en ligne
 
-▶ **Ouvre l'app : https://dataagent-vj7dl7bda3ttcisrjc86tn.streamlit.app/**
+▶ **Ouvre l'app : https://dataagent-nsoddb4po95mmbqyxsjadr.streamlit.app/**
 
 Pas de clé API sous la main ? L'app démarre en **mode démo** : scan,
 statistiques, valeurs aberrantes, comparaison et rapports fonctionnent
