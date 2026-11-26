@@ -735,21 +735,30 @@ if fichier is not None:
         reconstruire()
         st.rerun()
 
+chemin_exemple = None
 if (fichier is None and st.session_state.df is None
-        and st.session_state.brut is None
-        and os.path.exists("ventes_exemple.csv")):
-    if st.button("Essayer avec un fichier d'exemple"):
-        try:
-            with open("ventes_exemple.csv", "rb") as f:
-                contenu_ex = f.read()
-            st.session_state.brut = lire_csv(contenu_ex, "ventes_exemple.csv")
-            st.session_state.identifiant = ("ventes_exemple.csv",
-                                            len(contenu_ex))
-            st.session_state.nom = "ventes_exemple.csv"
-            st.session_state.df = None
-            st.rerun()
-        except Exception:
-            st.error("Impossible de charger le fichier d'exemple.")
+        and st.session_state.brut is None):
+    # Le fichier d'essai = Employee.csv embarqué dans le projet (identique
+    # en local et sur Streamlit Cloud), sinon celui du Bureau, sinon
+    # l'exemple des ventes.
+    bureau = os.path.join(os.path.expanduser("~"), "Desktop")
+    candidats = ["Employee.csv", os.path.join(bureau, "Employee.csv"),
+                 "ventes_exemple.csv"]
+    chemin_exemple = next((c for c in candidats if os.path.exists(c)), None)
+if (chemin_exemple is not None and fichier is None
+        and st.session_state.df is None and st.session_state.brut is None
+        and st.button("Essayer avec un fichier d'exemple")):
+    nom_exemple = os.path.basename(chemin_exemple)
+    try:
+        with open(chemin_exemple, "rb") as f:
+            contenu_ex = f.read()
+        st.session_state.brut = lire_csv(contenu_ex, nom_exemple)
+        st.session_state.identifiant = (nom_exemple, len(contenu_ex))
+        st.session_state.nom = nom_exemple
+        st.session_state.df = None
+        st.rerun()
+    except Exception:
+        st.error("Impossible de charger le fichier d'exemple.")
 
 if st.session_state.brut is not None and st.session_state.df is None:
     reconstruire()
