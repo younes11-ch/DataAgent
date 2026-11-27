@@ -16,7 +16,7 @@ def test_css_upload_cible_le_vrai_selecteur_streamlit():
     assert 'stFileUploaderDropzone' in css
     assert 'role="progressbar"' in css or "role='progressbar'" in css
     assert "@keyframes da-dessine" in css
-    assert "prefers-reduced-motion" not in css  # règle globale déjà dans app.py
+    # Pas de règle reduced-motion ici : elle vit globalement dans app.py.  # règle globale déjà dans app.py
 
 
 def _session(**kwargs):

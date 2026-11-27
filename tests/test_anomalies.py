@@ -19,6 +19,19 @@ def test_consensus_detecte_l_outlier_evident():
     # L'outlier est bien dans les lignes signalées.
     assert 21 in res["lignes"]
     assert set(res["comptes"]) == {"iqr", "zscore", "isolation_forest"}
+    assert res["comptes"]["iqr"] >= 1 and res["comptes"]["zscore"] >= 1
+
+
+def test_index_personnalise_et_corriger_sans_mediane():
+    df = pd.DataFrame({"prix": [10.0] * 20 + [1000.0]},
+                      index=list(range(100, 121)))
+    res = anomalies.resumer(df, "prix")
+    assert res["n"] >= 1
+    assert 21 in res["lignes"]  # positions base 1 (stables même à index dupliqué)
+    vide = pd.DataFrame({"prix": [None, None, None]})
+    out = anomalies.appliquer_decision(vide, "prix", "corriger", index=[0, 1])
+    assert "impossible" in out["message"]
+    assert out["df"]["prix"].isna().all()  # rien écrit (pas de nan)
 
 
 def test_pas_de_faux_positif_sans_consensus():

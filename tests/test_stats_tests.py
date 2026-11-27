@@ -2,13 +2,18 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import stats_tests
 
-rng = np.random.default_rng(7)
+
+def _rng():
+    """Tirage frais par test : l'ordre d'exécution ne change plus les seuils."""
+    return np.random.default_rng(7)
 
 
 def test_ttest_significatif_et_ns():
+    rng = _rng()
     df = pd.DataFrame({"x": np.concatenate([rng.normal(0, 1, 100),
                                             rng.normal(1, 1, 100)]),
                        "g": ["a"] * 100 + ["b"] * 100})
@@ -31,6 +36,7 @@ def test_mannwhitney_ok():
 
 
 def test_anova_et_kruskal():
+    rng = _rng()
     df = pd.DataFrame({"x": np.concatenate([rng.normal(0, 1, 60),
                                             rng.normal(0, 1, 60),
                                             rng.normal(2, 1, 60)]),
@@ -49,17 +55,23 @@ def test_chi2_associe_et_independant():
     assert "pas une cause" in r1["explication"]
     libre = pd.DataFrame({"a": ["x"] * 50 + ["y"] * 50,
                           "b": (["p", "q"] * 25) + (["p", "q"] * 25)})
-    r2 = stats_tests.lancer(liee, "chi2", "a", "b")
-    assert r2["ok"]
-    r3 = stats_tests.lancer(libre, "chi2", "a", "b")
-    assert r3["ok"] and r3["p"] > 0.05
+    r2 = stats_tests.lancer(libre, "chi2", "a", "b")
+    assert r2["ok"] and r2["p"] > 0.05
 
 
 def test_correlation_forte():
+    rng = _rng()
     x = np.linspace(0, 10, 50)
     df = pd.DataFrame({"x": x, "y": 2 * x + rng.normal(0, 0.1, 50)})
     res = stats_tests.lancer(df, "correlation", "x", "y")
     assert res["ok"] and res["effet"] > 0.99 and res["p"] < 0.05
+
+
+@pytest.mark.filterwarnings("ignore:An input array is constant")
+def test_correlation_constante_propre():
+    df = pd.DataFrame({"x": [5.0] * 10, "y": [float(i) for i in range(10)]})
+    res = stats_tests.lancer(df, "correlation", "x", "y")
+    assert not res["ok"] and "constante" in res["erreur"]
 
 
 def test_choix_auto():

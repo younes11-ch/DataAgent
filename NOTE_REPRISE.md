@@ -1,5 +1,31 @@
 # Note de reprise — DataAgent (hackathon Meta)
 
+## Où on en est (26 nov — audit multi-agents + correctifs, NON POUSSÉ)
+- ✅ 4 agents d'audit (sécurité, robustesse, tests, UI/config) + synthèse :
+  3 bloquants, ~27 majeurs, ~20 mineurs corrigés (voir commits à venir).
+- ✅ Bloquants sandbox : builtins restreints côté enfant (`BUILTINS_SURS`),
+  `_DeballeurRestreint` (allowlist builtins/numpy/pandas/pyarrow…) côté
+  parent, journal enfant plafonné (`_JournalBorne`), `eval`/`query` bloqués.
+  Preuve : sonde 5/5 (trafic légitime OK, gadget pickle refusé, bombe print
+  bornée à 20000).
+- ✅ Sécurité : anti-SSRF (`_hote_public` + revalidation post-redirect,
+  tests DNS simulé), anti-injection markdown (noms de sources, réponses IA),
+  formules CSV neutralisées (`'`), balises `<extrait>` neutralisées
+  (casse/espaces), plafond 200 modalités (`scan.MAX_MODALITES`), motifs
+  `audit.DANGEREUX` étendus, clé widget `sug-{idx}-…`, `taille+sha256` upload.
+- ✅ Robustesse : gardes vides `viz.insight`, imputation 100 % NaN,
+  `anomalies` (index dupliqués + médiane NaN), `series` (1 point + horizon),
+  `stats_tests` (colonne constante + alpha), `verif` (jamais de crash),
+  `points_aberrants` (méthode inconnue → ValueError).
+- ✅ Tests : 167/167 verts (`tests/test_contrat_json.py` nouveau : tests.json
+  sous contrat), `test_agent.py` A–H verts au 2e passage (F flaky = aléa LLM,
+  pas une régression). `openpyxl`/`xlrd` installés dans `.venv` (xlsx OK).
+- ⏸️ À décider : commit + push (redéploie Cloud tout seul). Non poussé :
+  l'utilisateur n'a pas encore dit oui.
+- ⚠️ Volontairement NON fait : `profiler` vide → None (le test existant
+  impose score 0 = contrat réel), `:has()` (dégradation gracieuse OK),
+  conversion `test_agent.py` en pytest (script manuel assumé).
+
 ## Où on en est (18 nov — correctifs sécurité APPLIQUÉS, re-déploiement OK)
 - ✅ Audit sandbox du 18 nov : lecture de fichiers prouvée via
   `pd.io.common.get_handle` (vol de clé API possible via le log),

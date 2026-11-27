@@ -40,7 +40,9 @@ assert "78,0 %" in phrases and "27,0 %" in phrases, phrases[:500]
 print("   Scan OK (taux global, segment extrême, comparaison)")
 
 print("== D. Scan Employee.csv dédoublonné (sans API) ==")
-emp = pd.read_csv("../../Employee.csv").drop_duplicates().reset_index(drop=True)
+from pathlib import Path
+emp = pd.read_csv(Path(__file__).resolve().parent
+                  / "Employee.csv").drop_duplicates().reset_index(drop=True)
 assert len(emp) == 2764, len(emp)
 assert round(emp["Age"].mean(), 1) == 31.0
 res_emp = scan.scan_anomalies(emp, "LeaveOrNot")
@@ -88,8 +90,9 @@ for interdit in ["dtype", "Name:"]:
 for causal in ["parce que", "à cause de", "causé par"]:
     assert causal not in r1["reponse"].lower(), f"causal ({causal})"
 assert r2["figures"]
-ok, _ = data_agent.verifier_reponse(
+ok, detail = data_agent.verifier_reponse(
     r1["reponse"], data_agent.extraire_nombres(r1["reponse"]), r1["reponse"])
+assert ok, f"auto-vérification refusée : {detail}"
 
 print("== G. Comparaison de 2 fichiers (sans API) ==")
 a = pd.read_csv("ventes_exemple.csv")

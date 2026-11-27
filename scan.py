@@ -3,6 +3,7 @@
 
 SEUIL_ECART = 0.15  # 15 points d'écart avec le taux global
 N_MIN = 50  # effectif minimum pour un segment fiable (règle R5)
+MAX_MODALITES = 200  # plafond anti-DoS : au-delà, colonne non segmentée
 
 
 def pct(x):
@@ -53,13 +54,19 @@ def _est_texte(serie):
 
 
 def _colonnes_segments(df, cible):
-    """Colonnes utilisables pour découper en segments (hors cible)."""
+    """Colonnes utilisables pour découper en segments (hors cible).
+
+    Un CSV piégé avec des millions de modalités texte figeait le serveur
+    (groupby géant + frères en O(G²)) : on ignore ces colonnes.
+    """
     cols = []
     for col in df.columns:
         if col == cible:
             continue
         s = df[col]
         n_uniques = s.nunique()
+        if n_uniques > MAX_MODALITES:
+            continue
         if _est_texte(s) or n_uniques <= 10:
             cols.append(col)
     return cols

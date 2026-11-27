@@ -45,47 +45,42 @@ def test_entrees_nettoyage_doublons_et_phrases():
                           "justification": "2 lignes en double supprimées."}
 
 
-def _rejouer(script, df, tmp_path, nom="entree.csv"):
+def _rejouer(script, df, tmp_path, monkeypatch, nom="entree.csv"):
     """Exécute le script généré sur df (via CSV temporaire) et rend le résultat relu."""
     entree = tmp_path / nom
     df.to_csv(entree, index=False)
-    import os
-    monkey_argv = ["script_nettoyage.py", str(entree)]
-    ancien_argv, ancien_cwd = sys.argv, os.getcwd()
-    os.chdir(tmp_path)
-    sys.argv = monkey_argv
-    try:
-        exec(script, {"__name__": "__main__"})
-    finally:
-        sys.argv = ancien_argv
-        os.chdir(ancien_cwd)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["script_nettoyage.py", str(entree)])
+    exec(script, {"__name__": "__main__"})
     return pd.read_csv(tmp_path / "donnees_nettoyees.csv")
 
 
-def test_export_rejoue_imputation_moyenne(tmp_path):
+def test_export_rejoue_imputation_moyenne(tmp_path, monkeypatch):
     df = _sale()
     imp = imputation.appliquer(df, "moyenne")
     script = journal.exporter_script("", imp["remplissages"], "moyenne", "entree.csv")
-    rejoue = _rejouer(script, df, tmp_path)
+    rejoue = _rejouer(script, df, tmp_path, monkeypatch)
     pd.testing.assert_frame_equal(rejoue, imp["df"], check_dtype=False)
 
 
-def test_export_rejoue_nettoyage_et_supprimer(tmp_path):
+def test_export_rejoue_nettoyage_et_supprimer(tmp_path, monkeypatch):
     df = pd.DataFrame({"n": [1.0, None, 1.0], "t": ["a", "b", "a"]})
     code = ("df_clean = df.drop_duplicates().reset_index(drop=True)\n"
             "rapport = ['doublons supprimés']")
     script = journal.exporter_script(code, {}, "supprimer", "entree.csv")
-    rejoue = _rejouer(script, df, tmp_path)
+    rejoue = _rejouer(script, df, tmp_path, monkeypatch)
     assert len(rejoue) == 1
     assert int(rejoue.isna().sum().sum()) == 0
 
 
-def test_export_rejoue_fichier_sale_reel(tmp_path):
-    df = pd.read_csv("ventes_sales.csv", encoding="latin-1")
+def test_export_rejoue_fichier_sale_reel(tmp_path, monkeypatch):
+    from pathlib import Path
+    df = pd.read_csv(Path(__file__).resolve().parent.parent
+                     / "ventes_sales.csv", encoding="latin-1")
     assert int(df.isna().sum().sum()) > 0  # le fichier est bien sale
     imp = imputation.appliquer(df, "moyenne")
     assert imp["restantes"] == 0
     script = journal.exporter_script("", imp["remplissages"], "moyenne",
                                      "ventes_sales.csv")
-    rejoue = _rejouer(script, df, tmp_path)
+    rejoue = _rejouer(script, df, tmp_path, monkeypatch)
     pd.testing.assert_frame_equal(rejoue, imp["df"], check_dtype=False)

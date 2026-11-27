@@ -234,30 +234,42 @@ def insight(df: pd.DataFrame, kind: str, col_x: str | None,
         if type_colonne(vals) == "date":
             jours = _en_dates(vals).dropna().dt.floor("D")
             pic = jours.value_counts()
+            if pic.empty:
+                return f"« {col_x} » : aucune date exploitable à décrire."
             return (f"« {col_x} » (n={_f(n)}) : pic le "
                     f"{pic.index[0].strftime('%d/%m/%Y')} "
                     f"({_f(int(pic.iloc[0]))} lignes).")
         if _est_nombre(vals):
             v = pd.to_numeric(vals, errors="coerce").dropna()
+            if v.empty:
+                return f"« {col_x} » : aucune valeur à décrire."
             return (f"« {col_x} » (n={_f(n)}) : médiane {_f(float(v.median()))}, "
                     f"la moitié des valeurs entre {_f(float(v.quantile(0.25)))} "
                     f"et {_f(float(v.quantile(0.75)))}.")
         top = vals.value_counts()
+        if top.empty:
+            return f"« {col_x} » : aucune valeur à décrire."
         return (f"« {col_x} » (n={_f(n)}) : valeur la plus fréquente "
                 f"« {top.index[0]} » ({_f(top.iloc[0])} fois).")
     if kind == "barres":
         if col_y is None or col_y == col_x:
             top = vals.value_counts()
+            if top.empty:
+                return f"« {col_x} » : aucune valeur à décrire."
             part = top.iloc[0] / top.sum() * 100
             return (f"« {top.index[0]} » domine « {col_x} » "
                     f"({_f(part, 1)} %, n={_f(int(top.iloc[0]))}).")
         table = pd.crosstab(vals.astype(str), df[col_y].astype(str))
+        if table.empty:
+            return f"« {col_x} » × « {col_y} » : rien à comparer."
         dom = table.sum(axis=1).idxmax()
         return (f"« {dom} » est la catégorie la plus nombreuse "
                 f"(n={_f(int(table.sum(axis=1).max()))}).")
     y = pd.to_numeric(df[col_y], errors="coerce")
     if kind == "box":
-        meds = y.groupby(vals.astype(str)).median()
+        meds = y.groupby(vals.astype(str)).median().dropna()
+        if meds.empty:
+            return f"« {col_y} » : aucune médiane calculable par groupe."
         lo, hi = meds.idxmin(), meds.idxmax()
         return (f"Écart marqué : « {lo} » (médiane {_f(float(meds.min()))}) "
                 f"contre « {hi} » (médiane {_f(float(meds.max()))}).")

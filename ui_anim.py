@@ -1,4 +1,5 @@
-# Animations de l'interface (fonctionnalités Anim 1-3).
+# Animations de l'interface (fonctionnalités Anim 1-3 + 6 : upload,
+# pipeline, compteurs/jauge, indicateur de frappe + streaming).
 # Choix technique en une phrase : l'app est Streamlit (Python, sans build React),
 # donc pas de Framer Motion ni npm — tout passe en CSS pur + @keyframes.
 # Règles : uniquement transform/opacity (60 fps), 150-300 ms en micro,

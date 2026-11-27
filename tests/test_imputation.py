@@ -16,6 +16,18 @@ def test_moyenne_et_mode_texte():
     assert res["df"]["n"].iloc[2] == (1 + 2 + 4) / 3
     assert res["df"]["t"].iloc[2] == "a"
     assert len(res["journal"]) >= 2
+    assert "mode (colonne texte" in res["journal"][1]
+
+
+def test_colonne_vide_et_strategie_inconnue():
+    vide = pd.DataFrame({"n": [float("nan"), float("nan")],
+                         "t": ["a", None]})
+    res = imputation.appliquer(vide, "moyenne")
+    assert res["df"]["n"].isna().all()  # nan non écrit en douce
+    assert res["restantes"] == 2
+    assert any("entièrement vide" in phrase for phrase in res["journal"])
+    res_auto = imputation.appliquer(_sale(), "xxx")
+    assert res_auto["restantes"] == 2  # stratégie inconnue -> auto
 
 
 def test_mediane():

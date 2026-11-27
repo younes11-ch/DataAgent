@@ -26,3 +26,13 @@ def test_pdf_avec_image():
 
 def test_latin_convertit_symboles():
     assert export_pdf._latin("café → ✓ …") == "café -> OK  ..."
+
+
+def test_limites_lignes_images_et_emoji():
+    lignes = [f"ligne {i} " + "x" * 500 for i in range(40)]
+    pdf = export_pdf.generer_pdf(
+        "T 🎉", "S", ["r"], [("Sec", lignes)],
+        [("Vide", b""), ("Casse", b"pas-un-png")])
+    assert pdf[:5] == b"%PDF-"
+    # 40 lignes fournies mais 30 max : le PDF reste borné.
+    assert len(pdf) < 60000

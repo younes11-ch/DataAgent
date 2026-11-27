@@ -89,6 +89,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 - `viz.py` — graphiques Plotly auto + phrase d'insight
 - `series.py` — tendance, saisonnalité, prévision Holt-Winters
 - `ui_anim.py` — animations CSS pures (upload, pipeline, compteurs, jauge)
+- `voix.py` — dictée micro + lecture vocale (Web Speech, zéro dépendance pip)
 - `export_pdf.py` — rapport PDF en un clic
 - `tests/` — tests pytest des nouveautés (sans clé API)
 - `rapport.py` — rapport HTML en un clic

@@ -64,6 +64,19 @@ def appliquer(df: pd.DataFrame, strategie: str) -> dict:
                 valeur = float(res[col].median())
                 methode = "la médiane"
             else:
+                valeur = None
+                methode = ""
+            if valeur is not None and pd.isna(valeur):
+                # Colonne 100 % vide : mean/median = nan, fillna(nan)
+                # ne remplirait rien malgré le journal.
+                journal.append(f"Colonne {col} entièrement vide : "
+                               "impossible à remplir, conservée telle quelle.")
+                details.append({"colonne": str(col), "action": "colonne_conservee",
+                                "lignes": 0,
+                                "justification": "colonne entièrement vide, "
+                                                 "impossible à remplir"})
+                continue
+            if valeur is None:
                 modes = res[col].mode(dropna=True)
                 if modes.empty:
                     journal.append(f"Colonne {col} entièrement vide : "

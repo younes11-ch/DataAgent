@@ -1,9 +1,11 @@
 # DataAgent : envoie un CSV (même sale), les agents le nettoient et l'analysent.
 
+import hashlib
 import io
 import json
 import math
 import os
+import re
 import time
 
 import pandas as pd
@@ -130,7 +132,7 @@ if not data_agent.cle_api_disponible():
 
 @st.cache_data
 def lire_csv(contenu: bytes, nom: str):
-    """Lit un CSV en détectant séparateur (,) et encodage (utf-8, latin-1)."""
+    """Lit un CSV en détectant séparateur (`,` ou `;`) et encodage (utf-8, latin-1)."""
     for enc in ("utf-8", "latin-1"):
         for sep in (",", ";"):
             try:
@@ -196,7 +198,9 @@ with st.sidebar:
                 or st.session_state.csv_cache.get("cle") != cle_csv:
             st.session_state.csv_cache = {
                 "cle": cle_csv,
-                "octets": st.session_state.df.to_csv(index=False).encode("utf-8")}
+                "octets": _neutraliser_formules(
+                    st.session_state.df).to_csv(
+                        index=False).encode("utf-8")}
         st.download_button("Télécharger les données nettoyées (CSV)",
                            st.session_state.csv_cache["octets"],
                            "donnees_nettoyees.csv", "text/csv")
@@ -366,13 +370,37 @@ def questions_secours(profil):
 
 
 def _lien_sain(url):
-    """Lien affichable : http(s) sans caractères de rupture markdown."""
+    """Lien affichable : http(s) public, sans userinfo ni rupture markdown."""
+    import urllib.parse
     propre = (url or "").strip()
     if not propre.startswith(("http://", "https://")):
         return ""
     if any(c in propre for c in " \t\n()\"'\\<>"):
         return ""
+    try:
+        if "@" in urllib.parse.urlsplit(propre).netloc:
+            return ""
+    except Exception:
+        return ""
     return propre
+
+
+def _neutraliser_formules(df):
+    """Neutralise l'injection de formules CSV à l'export.
+
+    Une cellule commençant par = + - @ (ou tab/CR) s'exécuterait à
+    l'ouverture dans Excel : on la préfixe d'une apostrophe, affichée
+    comme simple texte.
+    """
+
+    def _nettoie(valeur):
+        texte = str(valeur)
+        if texte[:1] in ("=", "+", "-", "@", "\t", "\r", "|"):
+            return "'" + texte
+        return valeur
+
+    return df.apply(lambda col: col.map(_nettoie)
+                    if col.dtype == object else col)
 
 
 def afficher_sources(sources):
@@ -382,6 +410,10 @@ def afficher_sources(sources):
     st.caption("Sources :")
     for src in sources:
         nom = (src.get("nom", "Source") or "Source").replace("[", "(").replace("]", ")")
+        # Anti-injection markdown : un nom piégé ("...\n![p](https://evil/t)")
+        # ne doit ni sauter de ligne ni embarquer d'image tierce.
+        nom = re.sub(r"[\r\n]+", " ", nom).strip()
+        nom = re.sub(r"^!+\s*(?=\[)", "", nom)
         url = _lien_sain(src.get("url"))
         if url:
             st.markdown(f"- [{nom}]({url})")
@@ -474,10 +506,20 @@ def bloc_reverification(echange, cle):
         st.info(echange["reverification"])
 
 
+def _sans_images_markdown(texte):
+    """Retire les images markdown d'un texte IA avant affichage.
+
+    `![alt](https://...)` déclencherait sinon une requête sortante (IP du
+    lecteur) vers un hôte choisi par le modèle : on garde le texte alt.
+    """
+    return re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", texte or "")
+
+
 def _diffuser(texte):
     """Affiche la réponse progressivement (3 mots / 25 ms, texte intact)."""
     def _paquets():
-        for morceau in ui_anim.decouper_stream(texte or ""):
+        for morceau in ui_anim.decouper_stream(
+                _sans_images_markdown(texte)):
             yield morceau
             time.sleep(0.025)
     st.write_stream(_paquets())
@@ -497,7 +539,8 @@ def afficher_echange(echange, idx):
     """Un échange user/assistant rejouable avec ou sans fichier chargé."""
     st.chat_message("user").write(echange["question"])
     with st.chat_message("assistant"):
-        st.write(echange["reponse"] or "Analyse terminée.")
+        st.write(_sans_images_markdown(echange["reponse"])
+                 or "Analyse terminée.")
         if echange.get("tableau") is not None:
             st.dataframe(echange["tableau"])
         if st.session_state.get("voir_graph", True):
@@ -686,11 +729,15 @@ fichier = st.file_uploader("Envoie ton fichier de données (CSV ou Excel, même 
 TAILLE_MAX_UPLOAD = 50_000_000  # 50 Mo : au-delà, le serveur partagé ramerait
 
 if fichier is not None:
+    if fichier.size > TAILLE_MAX_UPLOAD:
+        st.error("Fichier trop volumineux (max 50 Mo) : envoie un extrait.")
+        st.stop()
     contenu = fichier.getvalue()
     if len(contenu) > TAILLE_MAX_UPLOAD:
         st.error("Fichier trop volumineux (max 50 Mo) : envoie un extrait.")
         st.stop()
-    identifiant = (fichier.name, len(contenu))
+    identifiant = (fichier.name, len(contenu),
+                    hashlib.sha256(contenu).hexdigest())
     if st.session_state.identifiant != identifiant:
         try:
             brut_lu = lire_tableau(contenu, fichier.name)
@@ -892,8 +939,8 @@ if st.session_state.df is not None:
     questions = r.get("questions") or questions_secours(st.session_state.profil)
     if questions:
         st.subheader("4 · Questions suggérées (clique pour lancer)")
-        for q in questions[:st.session_state.get("nb_sug", 4)]:
-            if st.button(q, key=f"sug-{q[:20]}"):
+        for idx_sug, q in enumerate(questions[:st.session_state.get("nb_sug", 4)]):
+            if st.button(q, key=f"sug-{idx_sug}-{q[:20]}"):
                 st.session_state.a_poser = q
 
     st.divider()
@@ -916,12 +963,14 @@ if st.session_state.df is not None:
     st.divider()
     st.subheader("6 · Comparer 2 fichiers")
     st.write("Compare le fichier actuel avec un second fichier (ex : 2025 vs 2026).")
-    fichier_b = st.file_uploader("Envoie le second fichier", type=["csv"], key="fichier_b")
+    fichier_b = st.file_uploader("Envoie le second fichier",
+                                     type=["csv", "xlsx", "xls"], key="fichier_b")
     if fichier_b is not None and st.button("Lancer la comparaison"):
         try:
-            df_b = lire_csv(fichier_b.getvalue(), fichier_b.name)
+            df_b = lire_tableau(fichier_b.getvalue(), fichier_b.name)
         except Exception:
-            st.error("Impossible de lire ce second fichier. Vérifie que c'est bien un CSV.")
+            st.error("Impossible de lire ce second fichier. "
+                     "Vérifie que c'est bien un CSV ou un Excel.")
             df_b = None
         if df_b is not None:
             with st.spinner("Comparaison en cours…"):

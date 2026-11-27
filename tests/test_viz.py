@@ -2,6 +2,7 @@
 
 import pandas as pd
 import plotly.graph_objects as go
+import pytest
 
 import viz
 
@@ -22,18 +23,10 @@ def test_choisir_selon_types_et_inversion():
     assert viz.choisir(df, "date", "montant")["kind"] == "line"
     assert viz.choisir(df, "montant", "date")["kind"] == "line"
     assert viz.choisir(df, "ville", "montant", force="scatter")["kind"] == "scatter"
-    try:  # combinaison date × catégorie refusée
-        viz.choisir(df, "ville", "date")
-        refuse = False
-    except ValueError:
-        refuse = True
-    assert refuse
-    try:
+    with pytest.raises(ValueError, match="non visualisable"):
+        viz.choisir(df, "ville", "date")  # combinaison date × catégorie
+    with pytest.raises(ValueError, match="existe pas"):
         viz.choisir(df, "inconnue")
-        manque = False
-    except ValueError:
-        manque = True
-    assert manque
 
 
 def test_construire_chaque_type():

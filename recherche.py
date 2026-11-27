@@ -4,8 +4,10 @@
 
 import html
 import io
+import ipaddress
 import json
 import re
+import socket
 import time
 import urllib.parse
 import urllib.request
@@ -117,18 +119,52 @@ def lire_contenu(contenu, nom="", format_fichier=""):
     return pd.read_csv(io.BytesIO(contenu), encoding="latin-1")
 
 
+def _hote_public(url):
+    """Vrai si l'URL vise un hôte public (anti-SSRF).
+
+    Refuse userinfo (@), hôtes non résolvables et adresses non publiques
+    (privées, loopback, link-local, réservées) : un catalogue piégé ne doit
+    pas faire lire localhost ou 169.254.169.254 au serveur.
+    """
+    try:
+        morceau = urllib.parse.urlsplit(url or "")
+        hote = morceau.hostname or ""
+    except Exception:
+        return False
+    if not hote or "@" in morceau.netloc:
+        return False
+    try:
+        adresses = socket.getaddrinfo(hote, None)
+    except Exception:
+        return False
+    for info in adresses:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except Exception:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
 def telecharger_fichier(url, timeout=20, limite=LIMITE_FICHIER):
     """Télécharge un fichier (http/https uniquement, taille plafonnée)."""
     if not isinstance(url, str) or not url.startswith(("http://", "https://")):
         raise ValueError("URL de fichier invalide")
+    if not _hote_public(url):
+        raise ValueError("hôte non public (téléchargement refusé)")
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as rep:
-        # Une redirection (http -> file://, ftp://) ne doit jamais donner
-        # accès au disque local : on revérifie l'URL finale (les vraies
-        # réponses ont toujours geturl ; repli sur l'URL demandée sinon).
+        # Une redirection (http -> file://, ftp://, hôte interne) ne doit
+        # jamais donner accès au réseau local : on revérifie l'URL finale
+        # (les vraies réponses ont toujours geturl ; repli sur l'URL
+        # demandée sinon).
         finale = rep.geturl() if hasattr(rep, "geturl") else url
         if not finale.startswith(("http://", "https://")):
             raise ValueError("URL de fichier invalide (redirection refusée)")
+        if not _hote_public(finale):
+            raise ValueError("hôte non public (redirection refusée)")
         morceaux, total = [], 0
         while True:
             bloc = rep.read(65536)

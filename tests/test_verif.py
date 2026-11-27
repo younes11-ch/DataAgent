@@ -28,6 +28,15 @@ def test_comparaison_detecte_un_ecart():
     assert "cart" in verif.formater_verdict(comp).lower()
 
 
+def test_tolerance_et_entrees_malformees():
+    proches = verif.comparer_nombres([("100", 100.0)], [("100,04", 100.04)])
+    assert proches["identique"]
+    assert verif.comparer_nombres([], [])["identique"]
+    assert verif.comparer_nombres(["pas-une-paire"], [("x", 1.0)])["identique"]
+    assert verif.comparer_nombres([("100", 100.0)], None)["manquants"] == ["100"]
+    assert "cart" in verif.formater_verdict(None).lower()
+
+
 def test_code_en_echec_ne_crashe_pas():
     res = verif.reverifier(_df(), "print(1/0)")
     assert not res["ok"]

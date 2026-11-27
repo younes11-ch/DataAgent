@@ -23,8 +23,13 @@ def reverifier(df, code: str) -> dict:
         return {"ok": False, "log": run.get("log") or "",
                 "texte": "", "nombres": [],
                 "erreur": run.get("erreur") or "échec du calcul"}
-    texte, _tableau = data_agent._formater_resultat(run.get("result"))
-    nombres = data_agent.extraire_nombres((run.get("log") or "") + "\n" + (texte or ""))
+    try:
+        texte, _tableau = data_agent._formater_resultat(run.get("result"))
+        nombres = data_agent.extraire_nombres((run.get("log") or "") + "\n" + (texte or ""))
+    except Exception as e:
+        return {"ok": False, "log": run.get("log") or "", "texte": "",
+                "nombres": [],
+                "erreur": f"résultat inexploitable ({type(e).__name__})"}
     return {"ok": True, "log": run.get("log") or "", "texte": texte or "",
             "nombres": nombres, "erreur": ""}
 
@@ -35,9 +40,17 @@ def comparer_nombres(avant: list, apres: list) -> dict:
     Rend {"identique", "manquants", "details"}.
     "manquants" = valeurs de `avant` introuvables dans `apres` (tolérance _nombres_proches).
     """
+    try:
+        paires_apres = [v2 for _, v2 in (apres or [])]
+    except (TypeError, ValueError):
+        paires_apres = []
     manquants = []
-    for brut, val in (avant or []):
-        if not any(data_agent._nombres_proches(val, v2) for _, v2 in (apres or [])):
+    for paire in (avant or []):
+        try:
+            brut, val = paire
+        except (TypeError, ValueError):
+            continue  # entrée malformée : incomparable, ignorée
+        if not any(data_agent._nombres_proches(val, v2) for v2 in paires_apres):
             manquants.append(brut)
     identique = len(manquants) == 0
     details = ("chiffres identiques" if identique
@@ -48,6 +61,7 @@ def comparer_nombres(avant: list, apres: list) -> dict:
 
 def formater_verdict(comparaison: dict) -> str:
     """Phrase simple pour l'utilisateur à partir de comparer_nombres()."""
+    comparaison = comparaison if isinstance(comparaison, dict) else {}
     if comparaison.get("identique"):
         return "✅ Revérifié : le 2e calcul indépendant retrouve les mêmes chiffres."
     return ("⚠ Écart détecté à la revérification : " + comparaison.get("details", "")

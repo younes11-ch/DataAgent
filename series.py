@@ -113,13 +113,20 @@ def _f(v, decimales=1) -> str:
 def analyser(df: pd.DataFrame, col_date: str, col_valeur: str,
              horizon: int = 7) -> dict:
     """Analyse complète : tendance + saisonnalité + prévision + graphique."""
-    if not 1 <= int(horizon) <= 30:
+    try:
+        horizon = int(horizon)
+    except (TypeError, ValueError):
+        return {"ok": False, "erreur": "horizon entre 1 et 30"}
+    if not 1 <= horizon <= 30:
         return {"ok": False, "erreur": "horizon entre 1 et 30"}
     try:
         prep = preparer(df, col_date, col_valeur)
     except ValueError as e:
         return {"ok": False, "erreur": str(e)}
     serie, periode = prep["serie"], prep["periode"]
+    if len(serie) < 2:
+        return {"ok": False,
+                "erreur": "pas assez de périodes distinctes pour analyser"}
     tend = _tendance(serie)
     sais = _saison(serie, periode)
     prev, methode = _prevoir(serie, periode if sais else None, int(horizon))

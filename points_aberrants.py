@@ -50,6 +50,8 @@ def detecter(serie: pd.Series, methode: str) -> pd.Series:
         modele = IsolationForest(contamination=CONTAMINATION, random_state=42)
         pred = modele.fit_predict(vals.to_numpy().reshape(-1, 1))
         masque.loc[vals.index] = pred == -1
+    else:
+        raise ValueError(f"méthode inconnue : {methode}")
     return masque.fillna(False)
 
 

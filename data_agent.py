@@ -69,7 +69,7 @@ ATTRS_INTERDITS = {
     "environ", "getenv", "listdir", "getcwd", "chdir", "remove", "rmdir",
     "mkdir", "makedirs", "system", "popen", "open", "file", "FileIO",
     "DataSource", "get_handle", "urlopen", "urlretrieve", "HDFStore",
-    "format", "format_map",
+    "format", "format_map", "eval", "query",
     "read_csv", "read_table", "read_excel", "read_json", "read_sql",
     "read_parquet", "read_pickle", "read_hdf", "read_feather", "read_orc",
     "read_sas", "read_html",
@@ -414,13 +414,37 @@ import pandas as pd
 
 MAX_LOG = 20000
 MAX_FIGURES = 6
+# Builtins strictement limités : le code IA n'a ni open, ni import,
+# ni introspection (type/getattr/...) pour s'échapper du sous-processus.
+BUILTINS_SURS = {"print": print, "len": len, "range": range,
+                 "str": str, "int": int, "float": float, "bool": bool,
+                 "list": list, "dict": dict, "set": set, "tuple": tuple,
+                 "min": min, "max": max, "sum": sum, "abs": abs,
+                 "round": round, "sorted": sorted, "enumerate": enumerate,
+                 "zip": zip, "isinstance": isinstance,
+                 "Exception": Exception, "ValueError": ValueError,
+                 "TypeError": TypeError, "KeyError": KeyError,
+                 "IndexError": IndexError, "AttributeError": AttributeError,
+                 "ZeroDivisionError": ZeroDivisionError}
+
+
+class _JournalBorne(io.StringIO):
+    """Carnet de logs plafonné : une boucle print infinie ne gonfle pas la RAM."""
+
+    def write(self, s):
+        reste = MAX_LOG - self.tell()
+        if reste <= 0:
+            return len(s)
+        return super().write(s[:reste])
+
+
 entree, sortie = sys.argv[1], sys.argv[2]
 charge = pickle.load(open(entree, "rb"))
 espace = {"pd": pd, "plt": plt, "np": np, "df": charge["df"]}
-buf = io.StringIO()
+buf = _JournalBorne()
 try:
     with redirect_stdout(buf):
-        exec(charge["code"], {"__builtins__": __builtins__}, espace)
+        exec(charge["code"], {"__builtins__": BUILTINS_SURS}, espace)
     figures = []
     for num in plt.get_fignums()[:MAX_FIGURES]:
         b = io.BytesIO()
@@ -434,6 +458,26 @@ except Exception as e:
                 "log": buf.getvalue()[:MAX_LOG]}
 pickle.dump(resultat, open(sortie, "wb"))
 '''
+
+
+class _DeballeurRestreint(pickle.Unpickler):
+    """Unpickler confiné : la sortie de l'enfant ne peut instancier que des
+    conteneurs et tableaux (pas de fonctions, classes exotiques ni gadgets).
+
+    La charge légitime = dict/list/str/bytes/bool/int/float + DataFrame,
+    Series, ndarray et scalaires : tout le reste lève et le calcul échoue
+    proprement au lieu d'exécuter du code arbitraire dans l'app.
+    """
+
+    MODULES_SURS = frozenset({
+        "builtins", "collections", "datetime", "decimal", "numbers",
+        "numpy", "pandas", "pyarrow",
+    })
+
+    def find_class(self, module, name):
+        if module.split(".")[0] in self.MODULES_SURS:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"classe interdite : {module}.{name}")
 
 
 def executer(df, code):
@@ -472,8 +516,12 @@ def executer(df, code):
         if os.path.getsize(sortie) > TAILLE_MAX_SORTIE:
             echec["erreur"] = "résultat trop volumineux (max 8 Mo)"
             return echec
-        with open(sortie, "rb") as f:
-            run = pickle.load(f)
+        try:
+            with open(sortie, "rb") as f:
+                run = _DeballeurRestreint(f).load()
+        except Exception:
+            echec["erreur"] = "résultat illisible du sous-processus"
+            return echec
     for cle in ("log", "result", "figures", "df_clean", "rapport"):
         run.setdefault(cle, None if cle in ("result", "df_clean", "rapport") else ([] if cle == "figures" else ""))
     if isinstance(run.get("log"), str):
@@ -928,16 +976,28 @@ def _brouillon_sans_upload_hors_ligne(question, sources):
     return ("D'après les sources consultées :\n" + "\n".join(lignes))
 
 
+def _neutraliser_balise(texte):
+    """Neutralise toute balise <extrait> piégée (casse/espaces variables).
+
+    Un titre ou un extrait contenant `</EXTRAIT>`, `</extrait >` ou
+    `<extrait>` forgerait sinon de fausses balises = injection de consignes.
+    """
+    return re.sub(r"<\s*/?\s*extrait\s*>", "[extrait]", texte or "",
+                  flags=re.IGNORECASE)
+
+
 def _construire_prompt_recherche(question, sources, problemes=None):
     """Prompt de l'agent principal : extraits délimités et neutralisés."""
     morceaux = []
     for s in (sources or [])[:6]:
         brut = s.get("extrait")
         texte = (brut[:600] if isinstance(brut, str) else "")
-        texte = texte.replace("</extrait>", "[fin extrait]")
+        nom = str(s.get("nom", "?")).replace('"', "'")
+        url = str(s.get("url", "")).replace('"', "'")
         morceaux.append(
-            f"<extrait nom=\"{s.get('nom', '?')}\" url=\"{s.get('url', '')}\">"
-            f"{texte}</extrait>")
+            f"<extrait nom=\"{_neutraliser_balise(nom)}\" "
+            f"url=\"{_neutraliser_balise(url)}\">"
+            f"{_neutraliser_balise(texte)}</extrait>")
     bloc = "\n".join(morceaux)
     reprise = (f"\nProblèmes signalés par les auditeurs : "
                f"{'; '.join(problemes)}.\nCorrige-les." if problemes else "")

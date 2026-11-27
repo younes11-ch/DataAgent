@@ -55,7 +55,9 @@ def resumer(df: pd.DataFrame, colonne: str) -> dict:
         {"ligne": [int(i) + 1 for i in idx],
          colonne: [df.loc[i, colonne] for i in idx]}).reset_index(drop=True)
     vide["n"] = len(idx)
-    vide["lignes"] = [int(df.index.get_loc(i)) + 1 for i in idx]
+    # get_indexer_for (pas get_loc) : avec un index dupliqué, get_loc
+    # renvoie un slice et int(slice) lèverait TypeError.
+    vide["lignes"] = [int(p) + 1 for p in df.index.get_indexer_for(idx)]
     vide["index"] = list(idx)
     vide["comptes"] = {m: int(vote["detail"][m].sum())
                        for m in points_aberrants.METHODES}
@@ -124,6 +126,14 @@ def appliquer_decision(df: pd.DataFrame, colonne: str, decision: str,
         return {"df": res, "entree": ent, "valeur": None,
                 "message": f"{len(idx)} ligne(s) aberrante(s) supprimée(s)."}
     mediane = float(pd.to_numeric(res[colonne], errors="coerce").median())
+    if pd.isna(mediane):
+        ent = journal.entree(colonne=str(colonne), action="anomalies_conservees",
+                             lignes=0,
+                             justification="correction impossible : "
+                                           "aucune médiane calculable")
+        return {"df": res, "entree": ent, "valeur": None,
+                "message": ("Correction impossible : aucune médiane "
+                            "calculable, valeurs conservées.")}
     res.loc[idx, colonne] = mediane
     ent = journal.entree(colonne=str(colonne), action="corriger_anomalies",
                          lignes=len(idx),

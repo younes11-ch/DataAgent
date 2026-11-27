@@ -1,8 +1,12 @@
 # Tests du score de qualité (sans clé API, pandas seul).
 
+from pathlib import Path
+
 import pandas as pd
 
 import profiler
+
+RACINE = Path(__file__).resolve().parent.parent
 
 
 def test_donnees_propres_score_100():
@@ -25,7 +29,7 @@ def test_colonne_quasi_vide_penalisee_et_score_plafonne():
     df = pd.DataFrame({"a": [None] * 9 + [1.0], "b": range(10)})
     res = profiler.score_qualite(df)
     assert res["colonnes_vides"] == ["a"]
-    assert res["score"] >= 0
+    assert res["score"] < 100 and res["manquantes"] == 9
 
 
 def test_vide_vaut_zero_sans_crasher():
@@ -34,7 +38,7 @@ def test_vide_vaut_zero_sans_crasher():
 
 
 def test_nettoyage_ameliore_le_score():
-    sale = pd.read_csv("ventes_sales.csv", encoding="latin-1")
+    sale = pd.read_csv(RACINE / "ventes_sales.csv", encoding="latin-1")
     avant = profiler.score_qualite(sale)["score"]
     propre = sale.dropna().reset_index(drop=True)
     assert profiler.score_qualite(propre)["score"] >= avant

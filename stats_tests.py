@@ -104,6 +104,10 @@ def lancer(df: pd.DataFrame, test: str, col1: str,
     base = {"ok": False, "test": test, "col1": col1, "col2": col2,
             "alpha": alpha, "erreur": ""}
     try:
+        alpha = float(alpha)
+        if not 0 < alpha < 1:
+            raise ValueError("alpha doit être entre 0 et 1")
+        base["alpha"] = alpha
         if test == "auto":
             test = choisir(df, col1, col2)
             if test.startswith("erreur:"):
@@ -206,6 +210,9 @@ def lancer(df: pd.DataFrame, test: str, col1: str,
             if int(ok.sum()) < 3:
                 raise ValueError("pas assez de paires complètes (min 3)")
             r, p = stats.pearsonr(x[ok], y[ok])
+            if np.isnan(r):
+                raise ValueError("corrélation incalculable : "
+                                 "une colonne est constante")
             rs, _ = stats.spearmanr(x[ok], y[ok])
             res = {"libelle": f"Corrélation : « {col1} » × « {col2} »",
                    "statistique": float(r), "p": float(p),

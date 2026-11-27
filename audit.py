@@ -32,6 +32,16 @@ DANGEREUX = [
     (r"\brm\s+-rf\b", "commande destructive"),
     (r"DROP\s+TABLE", "ordre SQL destructif"),
     (r"__import__", "import masqué"),
+    (r"(?i)\bjavascript\s*:", "lien javascript:"),
+    (r"(?i)\bdata\s*:\s*text/html", "données HTML embarquées"),
+    (r"(?i)<script\b", "balise script"),
+    (r"(?i)\bon\w+\s*=", "gestionnaire d'événement"),
+    (r"(?i)\b(powershell|cmd\.exe)\b.*\b(curl|wget|Invoke-)", "commande de téléchargement"),
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "clé privée"),
+    (r"\b(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{10,})\b", "clé API connue"),
+    (r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}", "jeton JWT"),
+    (r"\b\d{13,19}\b", "numéro de carte possible"),
+    (r"\b\d{4}(?:[ \-]?\d{4}){2,3}\b", "numéro de carte possible"),
 ]
 
 

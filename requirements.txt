@@ -1,4 +1,6 @@
-# Versions figées = déploiement reproductible (testées en local, Python 3.12).
+# Dépendances directes figées (testées en local, Python 3.12).
+# Les transitives (pillow, pyarrow, altair…) suivent leurs versions
+# résolues : `uv pip freeze` pour un gel total si besoin.
 streamlit==1.66.1
 pandas==3.1.0
 matplotlib==3.11.2

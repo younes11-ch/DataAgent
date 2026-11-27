@@ -1,8 +1,14 @@
 # Tests de la détection de valeurs aberrantes (sans appel IA).
 
 import pandas as pd
+import pytest
 
 import points_aberrants as pa
+
+
+def test_methode_inconnue_leve():
+    with pytest.raises(ValueError, match="méthode inconnue"):
+        pa.detecter(pd.Series([1.0, 2.0, 3.0]), "zzz")
 
 
 def test_iqr_trouve_valeur_extreme():
