@@ -174,6 +174,24 @@ for cle, defaut in [("identifiant", None), ("nom", ""), ("brut", None),
 DETAIL_CHOIX = {"Concise": "concise", "Normale": "normale", "Détaillée": "detaillee"}
 GRAPH_CHOIX = {"Auto": "auto", "Barres": "barres", "Ligne": "ligne", "Camembert": "camembert"}
 
+
+def _neutraliser_formules(df):
+    """Neutralise l'injection de formules CSV à l'export.
+
+    Une cellule commençant par = + - @ (ou tab/CR) s'exécuterait à
+    l'ouverture dans Excel : on la préfixe d'une apostrophe, affichée
+    comme simple texte.
+    """
+
+    def _nettoie(valeur):
+        texte = str(valeur)
+        if texte[:1] in ("=", "+", "-", "@", "\t", "\r", "|"):
+            return "'" + texte
+        return valeur
+
+    return df.apply(lambda col: col.map(_nettoie)
+                    if col.dtype == object else col)
+
 with st.sidebar:
     st.header("Réglages")
     st.selectbox("Détail des réponses", list(DETAIL_CHOIX), key="detail_rep")
@@ -383,24 +401,6 @@ def _lien_sain(url):
     except Exception:
         return ""
     return propre
-
-
-def _neutraliser_formules(df):
-    """Neutralise l'injection de formules CSV à l'export.
-
-    Une cellule commençant par = + - @ (ou tab/CR) s'exécuterait à
-    l'ouverture dans Excel : on la préfixe d'une apostrophe, affichée
-    comme simple texte.
-    """
-
-    def _nettoie(valeur):
-        texte = str(valeur)
-        if texte[:1] in ("=", "+", "-", "@", "\t", "\r", "|"):
-            return "'" + texte
-        return valeur
-
-    return df.apply(lambda col: col.map(_nettoie)
-                    if col.dtype == object else col)
 
 
 def afficher_sources(sources):
